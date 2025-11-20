@@ -1,0 +1,6 @@
+Dockerfile
+.dockerignore
+.editorconfig
+.git
+.gitignore
+node_modules

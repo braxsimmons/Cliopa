@@ -1,0 +1,54 @@
+#! /usr/bin/env bash
+# helper script to build the production image
+set -e
+
+image="$1"
+tag="$2"
+
+# if [[ -z "$tag" ]]; then
+# 	echo "must pass a Git tag"
+# 	exit 1
+# fi
+#
+# if [[ $(git show-ref --verify "refs/tags/${tag}" 2&>/dev/null) -ne 0 ]]; then
+# 	echo "$0 is expecting a Git tag, not a commit"
+# 	exit 1
+# fi
+
+echo $image $tag
+
+if [[ "$image" -eq "all" ]]; then
+    targets="migrator app"
+else
+    targets="$image"
+fi
+
+echo $targets
+
+for target in $targets; do
+    echo $target
+    case "$target" in
+        migrator )
+            stage=migrator
+        ;;
+
+        app )
+            stage=production
+        ;;
+    esac
+
+    # echo "Building image as of: ${tag}"
+
+    registry_host="harbor.tlcops.com"
+    namespace="tlc-time"
+    repo="$target"
+    remote_tag="${registry_host}/${namespace}/${repo}:${tag}"
+    context_dir="$(dirname $(dirname $(realpath $BASH_SOURCE)))"
+
+    echo "$context_dir"
+
+    docker buildx build --tag "$remote_tag" \
+        --target "$stage" \
+        --file "$context_dir/Dockerfile" \
+        "$context_dir"
+done

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -e
+
+full_tag=$(git describe --long)
+current_tag=$(echo $full_tag | cut -d'-' -f1-2)
+current_tag_date=$(echo $current_tag | cut -d'-' -f1)
+current_tag_commit=$(git rev-parse --short "${current_tag}")
+current_commit=$(git rev-parse --short HEAD)
+
+# echo "${current_tag}"
+# echo "${current_tag_date}"
+# echo "${current_tag_commit}"
+# echo "${current_commit}"
+
+if [[ "${current_tag_commit}" == "${current_commit}" ]]; then
+	echo "Current commit ($(git rev-parse --short ${current_commit})) and proposed commit to"
+	echo "tag ($(git rev-parse --short ${current_tag_commit})) are the same. Aborting."
+	exit 1
+fi
+
+new_tag_date=$(date +'%Y.%m.%d')
+# echo $new_tag_date $git_tag_date
+
+if [[ "$new_tag_date" == "$current_tag_date" ]]; then
+	echo "Tag for current date already found, incrementing id by 1"
+	old_id=$(echo $git_tag | cut -d'-' -f2)
+	tag="${new_tag_date}-$((${old_id} + 1))"
+	# echo "${tag}"
+	git tag --annotate "${tag}" "${current_commit}" --message "${tag}"
+	echo "commit ${current_commit} tagged as version ${tag}"
+else
+	echo "no collision, safe to proceed"
+	tag="${new_tag_date}-1"
+	# echo "${tag}"
+	git tag --annotate "${tag}" "${current_commit}" --message "${tag}"
+	echo
+	echo "commit ${current_commit} tagged as version ${tag}"
+fi
+
+echo "Double check that the tagged commit was the commit you wanted to tag"
+echo "Then, push the tag to origin with"
+echo
+echo "git push origin ${tag}"
+echo
+echo "Then call the build image script with the tag"
+echo
+echo "./scripts/build-image ${tag}"

@@ -1,0 +1,138 @@
+[
+    {
+      "criterion_id": "QQ",
+      "question": "Were QQs asked and documented?",
+      "related_sections": ["Verify Account", "Client Main View", "If Client Refuses To Provide Personal"]
+    },
+    {
+      "criterion_id": "VCI",
+      "question": "Did CCM ask AND document they verified customer information? (First and Last Name + SSN, DOB, or Address). Was the file updated appropriately?",
+      "related_sections": ["Verify Account", "Client Main View", "Care Manager"]
+    },
+    {
+      "criterion_id": "PERMISSION",
+      "question": "Does the file demonstrate that the client gave appropriate marketing permissions and was not contacted in violation of DNC/DNM?",
+      "related_sections": ["Phone System Phone Compliance", "Promise Fulfillment"]
+    },
+    {
+      "criterion_id": "CAMPAIGN",
+      "question": "Was the correct campaign noted?",
+      "related_sections": ["Key Performance Indicators"]
+    },
+    {
+      "criterion_id": "BANKV",
+      "question": "Was the BANKV process correctly followed and noted?",
+      "related_sections": ["Bank Verification", "Bankv", "Lms If The Client Is Unable To Complete This"]
+    },
+    {
+      "criterion_id": "REVIEW_TERMS",
+      "question": "Were the loan terms correctly reviewed and documented?",
+      "related_sections": ["The Loan Process", "Loan Application"]
+    },
+    {
+      "criterion_id": "LOAN_DOCUMENT",
+      "question": "Does the file have the loan document attached and properly executed by the client, including documentation of the client's IP address?",
+      "related_sections": ["Loan Management"]
+    },
+    {
+      "criterion_id": "INITIATIONS",
+      "question": "Does the file demonstrate clear indication of how the loan process was initiated?",
+      "related_sections": ["Home Address", "Client"]
+    },
+    {
+      "criterion_id": "PRE_PD7_PERMISSION",
+      "question": "Does the file demonstrate clear indication of how the loan process was initiated before PD7 permission?",
+      "related_sections": ["Home Address", "Client"]
+    },
+    {
+      "criterion_id": "AMOUNT",
+      "question": "Was the submitted loan amount appropriate for the client's credit limit?",
+      "related_sections": ["Loan Application"]
+    },
+    {
+      "criterion_id": "NOTIFICATION",
+      "question": "Was any required follow-up with the client pursued promptly and documented correctly (including LMS Follow Up)?",
+      "related_sections": ["Flup", "Auto Cont Acts"]
+    },
+    {
+      "criterion_id": "PMT_REMINDERS",
+      "question": "Has the CCM made all applicable payment reminder calls/emails?",
+      "related_sections": ["Auto Cont Acts", "Money Orders"]
+    },
+    {
+      "criterion_id": "FOLLOWUP",
+      "question": "Was any required follow-up with the client pursued promptly and documented correctly?",
+      "related_sections": ["Flup", "Auto Cont Acts"]
+    },
+    {
+      "criterion_id": "ACCOMODATION",
+      "question": "Has the CCM offered and followed appropriate accommodation procedures? (1-Time Courtesy Extension, 1-Time Loan Refinance)",
+      "related_sections": ["Advanced Client Issues", "Resolution"]
+    },
+    {
+      "criterion_id": "R7_10_11_PROCESS",
+      "question": "Has the CCM followed the R7/10/11 process correctly?",
+      "related_sections": ["Advanced Client Issues"]
+    },
+    {
+      "criterion_id": "CHANGE_REQUESTS",
+      "question": "Were any payment type change requests documented and processed correctly?",
+      "related_sections": ["Loan Management", "Contact Action"]
+    },
+    {
+      "criterion_id": "CORRECT_DEPARTMENT",
+      "question": "Should the loan still be with the CRM?",
+      "related_sections": ["Loan Management", "Care Manager"]
+    },
+    {
+      "criterion_id": "NOTES",
+      "question": "Did the CCM properly document the file using the correct note format and adequate notation?",
+      "related_sections": ["Way Communica Tions", "W Ay Communica Tions"]
+    },
+    {
+      "criterion_id": "CLIENT_INTEREST",
+      "question": "Was Client Interest consistently obtained, documented, and updated?",
+      "related_sections": ["Client Interest", "WHY - CLIENT INTEREST"]
+    },
+    {
+      "criterion_id": "WHY_SMILE",
+      "question": "After listening to all call recordings related to this file, did the CCM's sincerity, tone, and friendliness meet standards?",
+      "related_sections": ["Smile", "World Class Care"]
+    },
+    {
+      "criterion_id": "WHAT_TIMELY",
+      "question": "Was the Client responded to in a timely manner?",
+      "related_sections": ["Recommend", "Resolution"]
+    },
+    {
+      "criterion_id": "WHAT_EMPATHY",
+      "question": "Did the CCM demonstrate care and concern?",
+      "related_sections": ["Emp Athy", "Help"]
+    },
+    {
+      "criterion_id": "WHAT_LISTEN_EXPLORE",
+      "question": "Did the CCM listen to the customer and explore solutions?",
+      "related_sections": ["Align", "Recommend", "Resolution"]
+    },
+    {
+      "criterion_id": "WHERE_RESOLUTION",
+      "question": "Was appropriate resolution pursued that was fair to both the client and the lender?",
+      "related_sections": ["Resolution"]
+    },
+    {
+      "criterion_id": "HOW_PROCESS",
+      "question": "Did the CCM follow all applicable processes?",
+      "related_sections": ["Loan Management", "The Loan Process"]
+    },
+    {
+      "criterion_id": "HOW_SCRIPTS",
+      "question": "Did the CCM comply with all applicable scripts?",
+      "related_sections": ["If A Call Progresses Past The", "Client Care Manager"]
+    },
+    {
+      "criterion_id": "WHO_CORE_VALUES",
+      "question": "Did the call demonstrate that the CRM lived up to Yatta's Core Values of Integrity, Passion, and Excellence?",
+      "related_sections": ["World Class Care", "Smile", "Emp Athy"]
+    }
+  ]
+  

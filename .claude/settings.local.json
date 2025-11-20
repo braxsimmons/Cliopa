@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(npm install)",
+      "Bash(npx tsc:*)",
+      "Bash(cat:*)",
+      "Bash(supabase status:*)",
+      "Bash(psql \"postgresql://postgres.zkywapiptgpnfkacpyrz:Br@xd0n2024@aws-0-us-west-1.pooler.supabase.com:6543/postgres\" -c \"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ''profiles'' AND column_name LIKE ''%role%'';\")",
+      "Bash(psql \"postgresql://postgres.zkywapiptgpnfkacpyrz:Br@xd0n2024@aws-0-us-west-1.pooler.supabase.com:6543/postgres\" -c \"SELECT table_name FROM information_schema.tables WHERE table_schema = ''public'' AND table_name IN (''calls'', ''report_cards'', ''audit_templates'', ''audit_cache'') ORDER BY table_name;\")",
+      "Bash(psql \"postgresql://postgres.zkywapiptgpnfkacpyrz:Br@xd0n2024@aws-0-us-west-1.pooler.supabase.com:6543/postgres\" -c \"SELECT name, is_default, jsonb_array_length(criteria) as criteria_count FROM audit_templates WHERE is_default = true;\")",
+      "Bash(brew install:*)",
+      "Bash(supabase link:*)",
+      "Bash(supabase login:*)",
+      "Bash(chmod:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

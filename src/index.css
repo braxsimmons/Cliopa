@@ -1,0 +1,326 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+   GLOBAL THEME VARIABLES
+   - Modern monochromatic design system
+   - Compatible with dark mode
+   ========================================================= */
+
+@layer base {
+    :root {
+        /* === Shadcn/ui HSL Variables === */
+        --background: 0 0% 100%;
+        --foreground: 222.2 84% 4.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 222.2 84% 4.9%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222.2 84% 4.9%;
+        --primary: 222.2 47.4% 11.2%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 210 40% 96.1%;
+        --secondary-foreground: 222.2 47.4% 11.2%;
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 222.2 47.4% 11.2%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+        --ring: 222.2 84% 4.9%;
+        --radius: 0.5rem;
+        --sidebar-background: 0 0% 98%;
+        --sidebar-foreground: 240 5.3% 26.1%;
+        --sidebar-primary: 240 5.9% 10%;
+        --sidebar-primary-foreground: 0 0% 98%;
+        --sidebar-accent: 240 4.8% 95.9%;
+        --sidebar-accent-foreground: 240 5.9% 10%;
+        --sidebar-border: 220 13% 91%;
+        --sidebar-ring: 217.2 91.2% 59.8%;
+
+        /* === Custom Color System === */
+        --color-bg: #f5f7fa;
+        --color-surface: #ffffff;
+        --color-text: #111111;
+        --color-subtext: #555555;
+        --color-border: #e0e0e0;
+        --color-accent: #000000;
+        --color-accent-hover: #222222;
+        --color-danger: #dc2626;
+        --color-success: #16a34a;
+        --color-warning: #ea580c;
+
+        /* === Shadows === */
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.12);
+        --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.18);
+    }
+
+    .dark {
+        /* === Shadcn/ui Dark Mode === */
+        --background: 222.2 84% 4.9%;
+        --foreground: 210 40% 98%;
+        --card: 222.2 84% 4.9%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222.2 84% 4.9%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 210 40% 98%;
+        --primary-foreground: 222.2 47.4% 11.2%;
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --ring: 212.7 26.8% 83.9%;
+        --sidebar-background: 240 5.9% 10%;
+        --sidebar-foreground: 240 4.8% 95.9%;
+        --sidebar-primary: 224.3 76.3% 48%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 240 3.7% 15.9%;
+        --sidebar-accent-foreground: 240 4.8% 95.9%;
+        --sidebar-border: 240 3.7% 15.9%;
+        --sidebar-ring: 217.2 91.2% 59.8%;
+
+        /* === Custom Dark Mode === */
+        --color-bg: #0f0f0f;
+        --color-surface: #1a1a1a;
+        --color-text: #f5f5f5;
+        --color-subtext: #aaaaaa;
+        --color-border: #2b2b2b;
+        --color-accent: #ffffff;
+        --color-accent-hover: #dddddd;
+        --color-danger: #ef4444;
+        --color-success: #22c55e;
+        --color-warning: #f97316;
+
+        /* === Shadows (reverse depth) === */
+        --shadow-sm: 0 1px 2px rgba(255, 255, 255, 0.05);
+        --shadow-md: 0 2px 6px rgba(255, 255, 255, 0.08);
+        --shadow-lg: 0 4px 12px rgba(255, 255, 255, 0.12);
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    html,
+    body {
+        @apply bg-background text-foreground;
+        background-color: var(--color-bg);
+        color: var(--color-text);
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        scroll-behavior: smooth;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        font-weight: 600;
+        color: var(--color-text);
+    }
+
+    p, span, label {
+        color: var(--color-subtext);
+    }
+
+    a {
+        color: var(--color-accent);
+        transition: color 0.25s ease;
+    }
+
+    a:hover {
+        color: var(--color-accent-hover);
+    }
+}
+
+@layer components {
+    /* === Modern Card Component === */
+    .modern-card {
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: var(--shadow-sm);
+        transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .modern-card:hover {
+        box-shadow: var(--shadow-md);
+    }
+
+    /* === Modern Buttons === */
+    .btn-modern-primary {
+        background-color: var(--color-accent);
+        color: #fff;
+        font-weight: 500;
+        border-radius: 0.5rem;
+        padding: 0.6rem 1.2rem;
+        box-shadow: var(--shadow-sm);
+        transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.1s ease;
+        border: none;
+        cursor: pointer;
+    }
+
+    .btn-modern-primary:hover {
+        background-color: var(--color-accent-hover);
+        box-shadow: var(--shadow-md);
+        transform: translateY(-1px);
+    }
+
+    .btn-modern-secondary {
+        background-color: var(--color-surface);
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        padding: 0.6rem 1.2rem;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+
+    .btn-modern-secondary:hover {
+        background-color: var(--color-border);
+    }
+
+    /* === Modern Inputs === */
+    .input-modern {
+        width: 100%;
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-border);
+        color: var(--color-text);
+        border-radius: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        transition: border-color 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+    }
+
+    .input-modern:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+    }
+
+    .dark .input-modern:focus {
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+    }
+
+    /* === Modern Tables === */
+    .table-modern {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .table-modern th {
+        background-color: var(--color-surface);
+        color: var(--color-subtext);
+        font-weight: 600;
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .table-modern td {
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--color-border);
+        color: var(--color-text);
+    }
+
+    /* === Original Components === */
+    .type-circle {
+        @apply inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-medium;
+    }
+
+    .type-pill {
+        @apply inline-block px-3 py-1 border border-gray-300 rounded-full text-sm leading-none;
+    }
+
+    .badge-verified {
+        @apply text-green-800 bg-green-100 rounded px-2 py-0.5 text-xs;
+    }
+
+    .status-pill {
+        display: inline-block;
+        padding: 0.2em 0.75em;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        line-height: 1;
+        font-weight: 500;
+    }
+
+    /* completed (unverified): pastel yellow */
+    .status-completed-unverified {
+        background-color: #fef9c3;
+        color: #92400e;
+    }
+
+    /* completed (verified): pastel green */
+    .status-completed-verified {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+
+    /* correction (pending): pastel yellow */
+    .status-correction-pending {
+        background-color: #fef9c3;
+        color: #92400e;
+    }
+
+    /* correction (approved): pastel green */
+    .status-correction-approved {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+
+    /* correction (denied): pastel red */
+    .status-correction-denied {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+}
+
+@layer components {
+    .status-pill {
+        display: inline-block;
+        padding: 0.2em 0.75em;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        line-height: 1;
+        font-weight: 500;
+    }
+
+    /* completed (unverified): pastel yellow */
+    .status-completed-unverified {
+        background-color: #fef9c3;
+        color: #92400e;
+    }
+
+    /* completed (verified): pastel green */
+    .status-completed-verified {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+
+    /* correction (pending): pastel yellow */
+    .status-correction-pending {
+        background-color: #fef9c3;
+        color: #92400e;
+    }
+
+    /* correction (approved): pastel green */
+    .status-correction-approved {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+
+    /* correction (denied): pastel red */
+    .status-correction-denied {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+}
