@@ -12,7 +12,15 @@
       "Bash(brew install:*)",
       "Bash(supabase link:*)",
       "Bash(supabase login:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(npm run build:*)",
+      "Bash(psql \"postgresql://postgres.zkywapiptgpnfkacpyrz:Br@xd0n2024@aws-0-us-west-1.pooler.supabase.com:6543/postgres\" -c \"SELECT table_name FROM information_schema.tables WHERE table_schema = ''public'' AND table_name = ''scheduled_shifts'';\")",
+      "Bash(psql \"postgresql://postgres.zkywapiptgpnfkacpyrz:Br%40xd0n2024@aws-0-us-west-1.pooler.supabase.com:6543/postgres\" -c \"SELECT table_name FROM information_schema.tables WHERE table_schema = ''public'' AND table_name = ''scheduled_shifts'';\")",
+      "Bash(psql:*)",
+      "Bash(npx supabase:*)",
+      "Bash(pbcopy)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill -9)"
     ],
     "deny": [],
     "ask": []

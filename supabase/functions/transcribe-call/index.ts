@@ -86,12 +86,22 @@ serve(async (req) => {
       console.error("Failed to trigger audit:", auditError);
     }
 
+    // Trigger conversation intelligence analysis
+    console.log("Triggering conversation analysis for call:", callId);
+    const { error: analysisError } = await supabase.functions.invoke("analyze-conversation", {
+      body: { callId },
+    });
+
+    if (analysisError) {
+      console.error("Failed to trigger conversation analysis:", analysisError);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         callId,
         transcriptLength: transcriptText.length,
-        message: "Transcription complete and audit triggered",
+        message: "Transcription complete, audit and analysis triggered",
       }),
       { headers: { "Content-Type": "application/json" } }
     );

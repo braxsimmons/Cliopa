@@ -271,30 +271,29 @@ export const ShiftReport = ({ onBack }: ShiftReportProps) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={onBack}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-              <h1 className="text-xl font-semibold text-gray-900">
-                Shift Report
-              </h1>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setShowShiftReportCSVDownload(true)}
-            >
-              <Download className="h-4 w-2 mr-1" />
-              Export
+    <div className="min-h-screen">
+      <header className="mb-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={onBack} className="text-[var(--color-text)]">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
             </Button>
+            <h1 className="text-2xl font-bold text-[var(--color-text)]">
+              Shift Report
+            </h1>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => setShowShiftReportCSVDownload(true)}
+            className="border-[var(--color-border)] text-[var(--color-text)]"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="space-y-6">
         <ShiftReportFilters
           entryTypeFilter={entryTypeFilter}
           setEntryTypeFilter={setEntryTypeFilter}
@@ -316,12 +315,13 @@ export const ShiftReport = ({ onBack }: ShiftReportProps) => {
           onSort={handleSort}
         />
 
-        <ShiftReportCSVDialog
-          isOpen={showShiftReportCSVDownload}
-          onClose={() => setShowShiftReportCSVDownload(false)}
-          onSumbit={(s, e) => downloadCSV(s, e)}
-        />
       </main>
+
+      <ShiftReportCSVDialog
+        isOpen={showShiftReportCSVDownload}
+        onClose={() => setShowShiftReportCSVDownload(false)}
+        onSumbit={(s, e) => downloadCSV(s, e)}
+      />
     </div>
   );
 };

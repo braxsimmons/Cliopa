@@ -137,7 +137,7 @@ serve(async (req) => {
       }
     }
 
-    // If we have a transcript, trigger immediate audit
+    // If we have a transcript, trigger immediate audit and conversation analysis
     if (payload.transcriptText) {
       console.log("Triggering audit for call:", call.id);
 
@@ -147,6 +147,17 @@ serve(async (req) => {
 
       if (auditError) {
         console.error("Failed to trigger audit:", auditError);
+      }
+
+      // Trigger conversation intelligence analysis
+      console.log("Triggering conversation analysis for call:", call.id);
+
+      const { error: analysisError } = await supabase.functions.invoke("analyze-conversation", {
+        body: { callId: call.id },
+      });
+
+      if (analysisError) {
+        console.error("Failed to trigger conversation analysis:", analysisError);
       }
     }
 

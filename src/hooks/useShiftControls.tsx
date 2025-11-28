@@ -9,6 +9,7 @@ import {
   TimeEntriesInsert,
   TimeEntriesUpdateCompletedShift,
 } from "@/services/TimeEntriesService";
+import { SettingsService, NetworkService } from "@/services/SettingsService";
 
 export const useShiftControls = (
   currentEntry: TimeEntry | null,
@@ -50,61 +51,89 @@ export const useShiftControls = (
       });
       return;
     }
-    const { canClockIn, scheduledStart } = await checkShiftSchedule();
 
-    // Attempting to clock in Early
-    if (!canClockIn && scheduledStart) {
-      await scheduleEarlyClockIn(scheduledStart, team, shift_type, startShift);
-      return;
-    } else if (!canClockIn) {
-      toast({
-        title: "No Valid Shift",
-        description: "Unable to find a valid shift to clock into",
-        variant: "destructive",
-      });
-    } else {
-      setLoading(true);
+    // Get settings for restrictions
+    let settings;
+    try {
+      settings = await SettingsService.getSettings();
 
-      // Handle Clocking In
-      try {
-        const startTime = new Date().toISOString();
-
-        const { data, error } = await TimeEntriesInsert(
-          user.id,
-          startTime,
-          team,
-          shift_type
-        );
-
-        if (error) {
-          console.error("Error starting shift:", error);
+      // Check network restriction
+      if (settings.require_company_network && settings.allowed_ip_addresses.length > 0) {
+        const { allowed, currentIP } = await NetworkService.isOnAllowedNetwork(settings.allowed_ip_addresses);
+        if (!allowed) {
           toast({
-            title: "Error",
-            description: `Failed to start shift: ${error.message}`,
+            title: "Network Restricted",
+            description: currentIP
+              ? `Clock-in is only allowed from company network. Your IP: ${currentIP}`
+              : "Unable to verify your network. Please connect to company WiFi.",
             variant: "destructive",
           });
-        } else {
-          console.log("Shift started successfully:", data);
-          setCurrentEntry(data);
-          toast({
-            title: "Shift Started",
-            description: "Your shift has been started successfully",
-          });
-
-          // Set up automatic shift ending
-          console.log("Setting up auto-end for shift:", data.id);
-          scheduleAutoEnd(data);
+          return;
         }
-      } catch (error) {
-        console.error("Unexpected error starting shift:", error);
+      }
+    } catch (error) {
+      console.error("Error checking settings:", error);
+      // Continue if settings check fails - don't block clock-in due to settings error
+    }
+
+    // Only check shift schedule if required
+    if (settings?.require_scheduled_shift) {
+      const { canClockIn, scheduledStart } = await checkShiftSchedule();
+
+      // Attempting to clock in Early
+      if (!canClockIn && scheduledStart) {
+        await scheduleEarlyClockIn(scheduledStart, team, shift_type, startShift);
+        return;
+      } else if (!canClockIn) {
         toast({
-          title: "Error",
-          description: "Failed to start shift",
+          title: "No Valid Shift",
+          description: "Unable to find a valid shift to clock into",
           variant: "destructive",
         });
-      } finally {
-        setLoading(false);
+        return;
       }
+    }
+
+    // Handle Clocking In
+    setLoading(true);
+    try {
+      const startTime = new Date().toISOString();
+
+      const { data, error } = await TimeEntriesInsert(
+        user.id,
+        startTime,
+        team,
+        shift_type
+      );
+
+      if (error) {
+        console.error("Error starting shift:", error);
+        toast({
+          title: "Error",
+          description: `Failed to start shift: ${error.message}`,
+          variant: "destructive",
+        });
+      } else {
+        console.log("Shift started successfully:", data);
+        setCurrentEntry(data);
+        toast({
+          title: "Shift Started",
+          description: "Your shift has been started successfully",
+        });
+
+        // Set up automatic shift ending
+        console.log("Setting up auto-end for shift:", data.id);
+        scheduleAutoEnd(data);
+      }
+    } catch (error) {
+      console.error("Unexpected error starting shift:", error);
+      toast({
+        title: "Error",
+        description: "Failed to start shift",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 

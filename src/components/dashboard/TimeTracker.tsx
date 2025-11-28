@@ -97,27 +97,30 @@ export const TimeTracker = () => {
 
   return (
     <>
-      <Card className="w-full">
+      <Card className="w-full bg-[var(--color-surface)] border-[var(--color-border)]">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-[var(--color-text)]">
             <Clock className="h-5 w-5" />
             Time Tracker
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="text-center">
+          <div className="space-y-3">
             <Button
               onClick={handleShiftToggle}
               disabled={loading || !user}
               size="lg"
-              className={`w-full h-16 text-lg font-semibold ${
+              className={`w-full h-16 text-lg font-semibold transition-all ${
                 isShiftActive
-                  ? "bg-red-600 hover:bg-red-700"
-                  : "bg-green-600 hover:bg-green-700"
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-green-600 hover:bg-green-700 text-white"
               }`}
             >
               {loading ? (
-                "Loading..."
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                  Loading...
+                </span>
               ) : isShiftActive ? (
                 <>
                   <Square className="mr-2 h-6 w-6" />
@@ -130,36 +133,38 @@ export const TimeTracker = () => {
                 </>
               )}
             </Button>
-            <Label htmlFor="request-type">Select Your Shift Type</Label>
-            <Select
-              value={isShiftActive ? currentEntry.shift_type : shift_type}
-              onValueChange={setShiftType}
-              disabled={isShiftActive}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="regular">Regular Shift</SelectItem>
-                <SelectItem value="alternate">
-                  Alternate Portfolio Shift
-                </SelectItem>
-                <SelectItem value="training">Training Shift</SelectItem>
-                <SelectItem value="bonus">Bonus Shift</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-1.5">
+              <Label htmlFor="shift-type" className="text-[var(--color-subtext)] text-sm">
+                Shift Type
+              </Label>
+              <Select
+                value={isShiftActive ? currentEntry.shift_type : shift_type}
+                onValueChange={setShiftType}
+                disabled={isShiftActive}
+              >
+                <SelectTrigger className="bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text)]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[var(--color-surface)] border-[var(--color-border)]">
+                  <SelectItem value="regular">Regular Shift</SelectItem>
+                  <SelectItem value="alternate">Alternate Portfolio Shift</SelectItem>
+                  <SelectItem value="training">Training Shift</SelectItem>
+                  <SelectItem value="bonus">Bonus Shift</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-center">
-            <div className="space-y-2">
-              <div className="text-sm text-gray-500">Current Shift</div>
-              <div className="text-2xl font-bold">
+            <div className="space-y-2 p-3 rounded-lg bg-[var(--color-bg)]">
+              <div className="text-sm text-[var(--color-subtext)]">Current Shift</div>
+              <div className="text-2xl font-bold text-[var(--color-text)]">
                 {isShiftActive ? formatHours(currentShiftHours) : "0h 0m 0s"}
               </div>
             </div>
-            <div className="space-y-2">
-              <div className="text-sm text-gray-500">Today's Total</div>
-              <div className="text-2xl font-bold">
+            <div className="space-y-2 p-3 rounded-lg bg-[var(--color-bg)]">
+              <div className="text-sm text-[var(--color-subtext)]">Today's Total</div>
+              <div className="text-2xl font-bold text-[var(--color-text)]">
                 {formatHours(
                   todayHours + (isShiftActive ? currentShiftHours : 0)
                 )}
@@ -168,14 +173,16 @@ export const TimeTracker = () => {
           </div>
 
           {isShiftActive && currentEntry && (
-            <div className="text-center text-sm text-gray-600">
-              Shift started at{" "}
-              {new Date(currentEntry.start_time).toLocaleTimeString()}
+            <div className="text-center text-sm text-[var(--color-subtext)] bg-green-50 dark:bg-green-950/20 py-2 px-3 rounded-lg">
+              <span className="inline-flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                Shift started at {new Date(currentEntry.start_time).toLocaleTimeString()}
+              </span>
             </div>
           )}
 
           {!user && (
-            <div className="text-center text-sm text-red-600">
+            <div className="text-center text-sm text-[var(--color-danger)] bg-red-50 dark:bg-red-950/20 py-2 px-3 rounded-lg">
               Please sign in to track time
             </div>
           )}

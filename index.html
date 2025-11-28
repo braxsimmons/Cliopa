@@ -7,18 +7,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cliopa.io - Workforce Management</title>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script>
-        (async () => {
-            const {supabase} = await import("/src/integrations/supabase/client");
-
-            window.handleSignInWithGoogle = async (res) => {
-                const {data, error} = await supabase.auth.signInWithIdToken({
-                    provider: "google",
-                    token: res.credential,
-                });
-            };
-        })()
-    </script>
     <meta name="description" content="Cliopa.io - AI-Powered Workforce Management & Payroll" />
 </head>
 

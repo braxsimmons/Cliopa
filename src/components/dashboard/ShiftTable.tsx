@@ -121,9 +121,9 @@ export const ShiftTable = () => {
 
   return (
     <>
-      <Card>
+      <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex items-center justify-between text-[var(--color-text)]">
             <div className="flex items-center gap-2">
               <History className="h-5 w-5" />
               Recent Shifts
@@ -131,7 +131,6 @@ export const ShiftTable = () => {
             <Button
               onClick={() => setManualEntry(true)}
               size="sm"
-              variant="outline"
               className="gap-2 bg-green-600 hover:bg-green-700 text-white"
             >
               Forgot to Clock in?
@@ -228,7 +227,7 @@ export const ShiftTable = () => {
                               <Edit className="h-4 w-4" />
                             </Button>
                           ) : (
-                            <span className="text-xs text-gray-400">—</span>
+                            <span className="text-xs text-[var(--color-subtext)]">—</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -269,10 +268,10 @@ export const ShiftTable = () => {
                           <ShiftStatus entry={entry} />
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-[var(--color-subtext)]">—</span>
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-[var(--color-subtext)]">—</span>
                         </TableCell>
                       </TableRow>
                     );
@@ -283,9 +282,9 @@ export const ShiftTable = () => {
                   <TableRow>
                     <TableCell
                       colSpan={8}
-                      className="text-center text-sm text-gray-500"
+                      className="text-center text-sm text-[var(--color-subtext)] py-8"
                     >
-                      No shifts recorded
+                      No shifts recorded yet. Start tracking your time!
                     </TableCell>
                   </TableRow>
                 )}

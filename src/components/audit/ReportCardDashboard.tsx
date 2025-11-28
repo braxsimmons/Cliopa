@@ -1,23 +1,94 @@
 import React, { useState, useEffect } from "react";
 import { useReportCards } from "@/hooks/useReportCards";
 import { useUserRoles } from "@/hooks/useUserRoles";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, TrendingUp, Award, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, TrendingUp, Award, AlertCircle, MessageSquareWarning, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { DisputeForm } from "@/components/disputes/DisputeForm";
+import { DisputeManagement } from "@/components/disputes/DisputeManagement";
+import { supabase } from "@/integrations/supabase/client";
 
 export const ReportCardDashboard: React.FC = () => {
-  const { reportCards, trendData, performanceSummary, loading, error, fetchTrendData, fetchPerformanceSummary } = useReportCards();
+  const { reportCards, trendData, performanceSummary, loading, error, fetchTrendData, fetchPerformanceSummary, refetch } = useReportCards();
   const { canManageUsers } = useUserRoles();
+  const { user } = useAuth();
 
   const [selectedTeam, setSelectedTeam] = useState<string>("all");
   const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("date");
+  const [activeTab, setActiveTab] = useState<string>("report-cards");
+
+  // Dispute state
+  const [selectedReportCard, setSelectedReportCard] = useState<any>(null);
+  const [disputeFormOpen, setDisputeFormOpen] = useState(false);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [disputeStatuses, setDisputeStatuses] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchTrendData();
     fetchPerformanceSummary();
+    fetchDisputeStatuses();
   }, []);
+
+  // Fetch dispute statuses for all report cards
+  const fetchDisputeStatuses = async () => {
+    try {
+      const { data } = await supabase
+        .from('score_disputes')
+        .select('report_card_id, status')
+        .in('status', ['pending', 'under_review', 'approved', 'partially_approved', 'rejected']);
+
+      if (data) {
+        const statusMap: Record<string, string> = {};
+        data.forEach((d: any) => {
+          // Keep the most recent/relevant status
+          if (!statusMap[d.report_card_id] || d.status === 'pending' || d.status === 'under_review') {
+            statusMap[d.report_card_id] = d.status;
+          }
+        });
+        setDisputeStatuses(statusMap);
+      }
+    } catch (error) {
+      console.error('Error fetching dispute statuses:', error);
+    }
+  };
+
+  const handleDisputeClick = (reportCard: any) => {
+    setSelectedReportCard(reportCard);
+    setDisputeFormOpen(true);
+  };
+
+  const handleDisputeSubmitted = () => {
+    fetchDisputeStatuses();
+    refetch?.();
+  };
+
+  const getDisputeStatusBadge = (reportCardId: string) => {
+    const status = disputeStatuses[reportCardId];
+    if (!status) return null;
+
+    const configs: Record<string, { label: string; className: string }> = {
+      pending: { label: 'Dispute Pending', className: 'bg-yellow-100 text-yellow-800' },
+      under_review: { label: 'Under Review', className: 'bg-blue-100 text-blue-800' },
+      approved: { label: 'Dispute Approved', className: 'bg-green-100 text-green-800' },
+      partially_approved: { label: 'Partially Approved', className: 'bg-teal-100 text-teal-800' },
+      rejected: { label: 'Dispute Rejected', className: 'bg-red-100 text-red-800' },
+    };
+
+    const config = configs[status];
+    if (!config) return null;
+
+    return (
+      <Badge className={config.className}>
+        {config.label}
+      </Badge>
+    );
+  };
 
   if (loading) {
     return (
@@ -135,14 +206,58 @@ export const ReportCardDashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Report Cards</h1>
-        <p className="text-[var(--color-subtext)] mt-1">
-          {canManageUsers()
-            ? "View AI audit scores and performance metrics for all agents"
-            : "View your AI audit scores and performance history"}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Report Cards</h1>
+          <p className="text-[var(--color-subtext)] mt-1">
+            {canManageUsers()
+              ? "View AI audit scores and performance metrics for all agents"
+              : "View your AI audit scores and performance history"}
+          </p>
+        </div>
       </div>
+
+      {/* Tabs for managers */}
+      {canManageUsers() ? (
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="report-cards">Report Cards</TabsTrigger>
+            <TabsTrigger value="disputes" className="flex items-center gap-2">
+              <MessageSquareWarning className="h-4 w-4" />
+              Score Disputes
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="report-cards" className="mt-6">
+            {renderReportCardsContent()}
+          </TabsContent>
+
+          <TabsContent value="disputes" className="mt-6">
+            <DisputeManagement />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        renderReportCardsContent()
+      )}
+
+      {/* Dispute Form Dialog */}
+      {selectedReportCard && (
+        <DisputeForm
+          reportCard={selectedReportCard}
+          open={disputeFormOpen}
+          onClose={() => {
+            setDisputeFormOpen(false);
+            setSelectedReportCard(null);
+          }}
+          onSubmitted={handleDisputeSubmitted}
+        />
+      )}
+    </div>
+  );
+
+  function renderReportCardsContent() {
+    return (
+      <div className="space-y-6">
 
       {/* Filters */}
       {canManageUsers() && (
@@ -303,62 +418,192 @@ export const ReportCardDashboard: React.FC = () => {
                   <th className="text-left p-3 font-semibold">Overall</th>
                   <th className="text-left p-3 font-semibold">Communication</th>
                   <th className="text-left p-3 font-semibold">Compliance</th>
-                  <th className="text-left p-3 font-semibold">Feedback</th>
+                  <th className="text-left p-3 font-semibold">Status</th>
+                  <th className="text-left p-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredReportCards.length === 0 ? (
                   <tr>
-                    <td colSpan={canManageUsers() ? 7 : 6} className="p-8 text-center text-[var(--color-subtext)]">
+                    <td colSpan={canManageUsers() ? 8 : 7} className="p-8 text-center text-[var(--color-subtext)]">
                       No report cards found
                     </td>
                   </tr>
                 ) : (
-                  filteredReportCards.map((rc, index) => (
-                    <tr
-                      key={rc.id}
-                      className={index % 2 === 0 ? "bg-[var(--color-bg)]" : "bg-[var(--color-surface)]"}
-                    >
-                      {canManageUsers() && (
-                        <td className="p-3">
-                          <div>
-                            <p className="font-medium">
-                              {rc.profiles?.first_name} {rc.profiles?.last_name}
-                            </p>
-                            <p className="text-sm text-[var(--color-subtext)]">{rc.profiles?.team || "No Team"}</p>
-                          </div>
-                        </td>
-                      )}
-                      <td className="p-3 text-sm">
-                        {new Date(rc.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="p-3 text-sm">{rc.source_file || "N/A"}</td>
-                      <td className="p-3">
-                        <span className={`font-bold ${getScoreColor(rc.overall_score)}`}>
-                          {rc.overall_score}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span className={rc.communication_score ? getScoreColor(rc.communication_score) : ""}>
-                          {rc.communication_score || "-"}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <span className={rc.compliance_score ? getScoreColor(rc.compliance_score) : ""}>
-                          {rc.compliance_score || "-"}
-                        </span>
-                      </td>
-                      <td className="p-3 text-sm text-[var(--color-subtext)] max-w-xs truncate">
-                        {rc.feedback || "No feedback"}
-                      </td>
-                    </tr>
-                  ))
+                  filteredReportCards.map((rc, index) => {
+                    const hasDispute = disputeStatuses[rc.id];
+                    const canDispute = !canManageUsers() && rc.user_id === user?.id && !hasDispute;
+                    const isExpanded = expandedRow === rc.id;
+
+                    return (
+                      <React.Fragment key={rc.id}>
+                        <tr
+                          className={`${index % 2 === 0 ? "bg-[var(--color-bg)]" : "bg-[var(--color-surface)]"} ${
+                            isExpanded ? "border-b-0" : ""
+                          }`}
+                        >
+                          {canManageUsers() && (
+                            <td className="p-3">
+                              <div>
+                                <p className="font-medium">
+                                  {rc.profiles?.first_name} {rc.profiles?.last_name}
+                                </p>
+                                <p className="text-sm text-[var(--color-subtext)]">{rc.profiles?.team || "No Team"}</p>
+                              </div>
+                            </td>
+                          )}
+                          <td className="p-3 text-sm">
+                            {new Date(rc.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="p-3 text-sm">{rc.source_file || "N/A"}</td>
+                          <td className="p-3">
+                            <span className={`font-bold ${getScoreColor(rc.overall_score)}`}>
+                              {rc.overall_score}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={rc.communication_score ? getScoreColor(rc.communication_score) : ""}>
+                              {rc.communication_score || "-"}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={rc.compliance_score ? getScoreColor(rc.compliance_score) : ""}>
+                              {rc.compliance_score || "-"}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {getDisputeStatusBadge(rc.id) || (
+                              <Badge variant="outline" className="text-green-700 border-green-300">
+                                Final
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setExpandedRow(isExpanded ? null : rc.id)}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </Button>
+                              {canDispute && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDisputeClick(rc)}
+                                  className="text-[var(--color-accent)] border-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
+                                >
+                                  <MessageSquareWarning className="h-4 w-4 mr-1" />
+                                  Dispute
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Expanded Row with Details */}
+                        {isExpanded && (
+                          <tr className={index % 2 === 0 ? "bg-[var(--color-bg)]" : "bg-[var(--color-surface)]"}>
+                            <td colSpan={canManageUsers() ? 8 : 7} className="p-4 border-t border-[var(--color-border)]">
+                              <div className="space-y-4">
+                                {/* Feedback */}
+                                {rc.feedback && (
+                                  <div>
+                                    <h4 className="font-medium mb-1">Feedback</h4>
+                                    <p className="text-sm text-[var(--color-subtext)]">{rc.feedback}</p>
+                                  </div>
+                                )}
+
+                                {/* Score Breakdown */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {rc.tone_score && (
+                                    <div className="bg-[var(--color-surface)] p-3 rounded-lg">
+                                      <p className="text-xs text-[var(--color-subtext)]">Tone</p>
+                                      <p className={`text-xl font-bold ${getScoreColor(rc.tone_score)}`}>
+                                        {rc.tone_score}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {rc.empathy_score && (
+                                    <div className="bg-[var(--color-surface)] p-3 rounded-lg">
+                                      <p className="text-xs text-[var(--color-subtext)]">Empathy</p>
+                                      <p className={`text-xl font-bold ${getScoreColor(rc.empathy_score)}`}>
+                                        {rc.empathy_score}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {rc.accuracy_score && (
+                                    <div className="bg-[var(--color-surface)] p-3 rounded-lg">
+                                      <p className="text-xs text-[var(--color-subtext)]">Accuracy</p>
+                                      <p className={`text-xl font-bold ${getScoreColor(rc.accuracy_score)}`}>
+                                        {rc.accuracy_score}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {rc.resolution_score && (
+                                    <div className="bg-[var(--color-surface)] p-3 rounded-lg">
+                                      <p className="text-xs text-[var(--color-subtext)]">Resolution</p>
+                                      <p className={`text-xl font-bold ${getScoreColor(rc.resolution_score)}`}>
+                                        {rc.resolution_score}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Strengths & Improvements */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {rc.strengths && rc.strengths.length > 0 && (
+                                    <div>
+                                      <h4 className="font-medium mb-2 text-green-700">Strengths</h4>
+                                      <ul className="list-disc list-inside text-sm space-y-1">
+                                        {rc.strengths.map((s: string, i: number) => (
+                                          <li key={i} className="text-[var(--color-subtext)]">{s}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {rc.areas_for_improvement && rc.areas_for_improvement.length > 0 && (
+                                    <div>
+                                      <h4 className="font-medium mb-2 text-amber-700">Areas for Improvement</h4>
+                                      <ul className="list-disc list-inside text-sm space-y-1">
+                                        {rc.areas_for_improvement.map((a: string, i: number) => (
+                                          <li key={i} className="text-[var(--color-subtext)]">{a}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Dispute Button for agents */}
+                                {canDispute && (
+                                  <div className="pt-2 border-t border-[var(--color-border)]">
+                                    <Button
+                                      onClick={() => handleDisputeClick(rc)}
+                                      className="bg-[var(--color-accent)] hover:bg-[var(--color-accent)]/90"
+                                    >
+                                      <MessageSquareWarning className="h-4 w-4 mr-2" />
+                                      Dispute This Score
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
+      </div>
+    );
+  }
 };

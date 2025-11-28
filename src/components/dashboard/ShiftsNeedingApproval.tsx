@@ -20,9 +20,9 @@ export const ShiftsNeedingApprovalTable = () => {
 
   return (
     <>
-      <Card>
+      <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+          <CardTitle className="flex items-center justify-between text-[var(--color-text)]">
             <div className="flex items-center gap-2">
               <History className="h-5 w-5" />
               Weekly Hours
@@ -68,8 +68,9 @@ export const ShiftsNeedingApprovalTable = () => {
                                 toggleVerified(entry.unverified_ids)
                               }
                               aria-label="Verify shift"
+                              className="border-[var(--color-border)] hover:bg-green-50 dark:hover:bg-green-950/20"
                             >
-                              <span className="text-xs text-gray-600">
+                              <span className="text-xs text-[var(--color-text)]">
                                 Confirm?
                               </span>
                             </Button>
@@ -79,7 +80,7 @@ export const ShiftsNeedingApprovalTable = () => {
                             </div>
                           )
                         ) : (
-                          <span className="text-xs text-gray-600">
+                          <span className="text-xs text-yellow-600 dark:text-yellow-400">
                             Pending Correction
                           </span>
                         )}
@@ -91,9 +92,9 @@ export const ShiftsNeedingApprovalTable = () => {
                   <TableRow>
                     <TableCell
                       colSpan={8}
-                      className="text-center text-sm text-gray-500"
+                      className="text-center text-sm text-[var(--color-subtext)] py-8"
                     >
-                      No shifts recorded
+                      No weekly hours recorded yet
                     </TableCell>
                   </TableRow>
                 )}

@@ -20,6 +20,17 @@ import UserProfilePage from "@/pages/UserProfilePage";
 import AuditUploadPage from "@/pages/AuditUploadPage";
 import ReportCardsPage from "@/pages/ReportCardsPage";
 import { Five9ConfigPage } from "@/pages/Five9ConfigPage";
+import AuditTemplatesPage from "@/pages/AuditTemplatesPage";
+import ShiftSchedulerPage from "@/pages/ShiftSchedulerPage";
+import PayrollExportPage from "@/pages/PayrollExportPage";
+import CompanySettingsPage from "@/pages/CompanySettingsPage";
+import AnnouncementsPage from "@/pages/AnnouncementsPage";
+import PerformanceDashboardPage from "@/pages/PerformanceDashboardPage";
+import CoachingPage from "@/pages/CoachingPage";
+import ConversationIntelligencePage from "@/pages/ConversationIntelligencePage";
+import ComplianceAlertsPage from "@/pages/ComplianceAlertsPage";
+import CallLibraryPage from "@/pages/CallLibraryPage";
+import { FullPageLoader } from "@/components/ui/loading-spinner";
 
 const queryClient = new QueryClient();
 
@@ -27,17 +38,12 @@ const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
   const {
     canManageUsers,
-    isAdmin,
     canManageAllTimeEntries,
     loading: rolesLoading,
   } = useUserRoles();
 
   if (loading || rolesLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
+    return <FullPageLoader message="Initializing Cliopa.io..." />;
   }
 
   if (!user) {
@@ -63,6 +69,16 @@ const AppContent: React.FC = () => {
           <Route
             path="/five9-config"
             element={canManageUsers() ? <Five9ConfigPage /> : <NotFound />}
+          />
+          <Route
+            path="/audit-templates"
+            element={canManageUsers() ? <AuditTemplatesPage /> : <NotFound />}
+          />
+          <Route
+            path="/shift-scheduler"
+            element={
+              canManageAllTimeEntries() ? <ShiftSchedulerPage /> : <NotFound />
+            }
           />
           <Route
             path="/shift-report"
@@ -93,6 +109,50 @@ const AppContent: React.FC = () => {
           <Route
             path="/uto-report"
             element={canManageUsers() ? <UTOReportPage /> : <NotFound />}
+          />
+          <Route
+            path="/payroll"
+            element={canManageUsers() ? <PayrollExportPage /> : <NotFound />}
+          />
+          <Route
+            path="/settings"
+            element={canManageUsers() ? <CompanySettingsPage /> : <NotFound />}
+          />
+          <Route
+            path="/announcements"
+            element={
+              canManageAllTimeEntries() ? <AnnouncementsPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/performance"
+            element={
+              canManageAllTimeEntries() ? <PerformanceDashboardPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/coaching"
+            element={
+              canManageAllTimeEntries() ? <CoachingPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/conversation-intelligence"
+            element={
+              canManageAllTimeEntries() ? <ConversationIntelligencePage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/compliance-alerts"
+            element={
+              canManageAllTimeEntries() ? <ComplianceAlertsPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/call-library"
+            element={
+              canManageAllTimeEntries() ? <CallLibraryPage /> : <NotFound />
+            }
           />
           <Route path="*" element={<NotFound />} />
         </Routes>

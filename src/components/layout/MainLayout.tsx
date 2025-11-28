@@ -7,10 +7,11 @@ interface MainLayoutProps {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex min-h-screen">
       <Sidebar />
       <main className="flex-1 overflow-y-auto bg-[var(--color-bg)]">
-        <div className="container mx-auto p-6 max-w-7xl">
+        {/* Add top padding on mobile to account for fixed header */}
+        <div className="container mx-auto p-4 sm:p-6 max-w-7xl pt-20 lg:pt-6">
           {children}
         </div>
       </main>
