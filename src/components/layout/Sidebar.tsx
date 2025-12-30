@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -27,6 +27,8 @@ import {
   Brain,
   ShieldAlert,
   Library,
+  Cpu,
+  PieChart,
 } from 'lucide-react';
 import { useUserRoles } from '@/hooks/useUserRoles';
 import { useAuth } from '@/hooks/useAuth';
@@ -61,17 +63,72 @@ const SidebarContent: React.FC<{
   const { canManageUsers, canManageAllTimeEntries, userRoles } = useUserRoles();
   const { signOut } = useAuth();
   const { profile } = useProfile();
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    'my-stuff': true,
-    'time-management': true,
-    'call-quality': false,
-    'reports': false,
-    'admin': false,
+
+  // Persist sidebar group state in localStorage
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('sidebar-groups');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      'my-stuff': true,
+      'time-management': true,
+      'call-quality': false,
+      'reports': false,
+      'admin': false,
+    };
   });
 
   const toggleGroup = (groupId: string) => {
-    setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+    setOpenGroups(prev => {
+      const next = { ...prev, [groupId]: !prev[groupId] };
+      localStorage.setItem('sidebar-groups', JSON.stringify(next));
+      return next;
+    });
   };
+
+  // Preserve scroll position across navigation
+  const navRef = useRef<HTMLElement>(null);
+  const scrollPositionRef = useRef<number>(0);
+
+  // Save scroll position on every scroll
+  const handleScroll = useCallback(() => {
+    if (navRef.current) {
+      scrollPositionRef.current = navRef.current.scrollTop;
+      sessionStorage.setItem('sidebar-scroll', String(navRef.current.scrollTop));
+    }
+  }, []);
+
+  // Restore scroll position synchronously before paint
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    // Restore from session storage or ref
+    const savedScroll = sessionStorage.getItem('sidebar-scroll');
+    if (savedScroll) {
+      const scrollTop = parseInt(savedScroll, 10);
+      // Restore immediately
+      nav.scrollTop = scrollTop;
+      scrollPositionRef.current = scrollTop;
+
+      // Also restore after a brief delay to handle any layout shifts
+      requestAnimationFrame(() => {
+        if (nav) {
+          nav.scrollTop = scrollTop;
+        }
+      });
+    }
+  }, [location.pathname]); // Re-run on route change
+
+  // Set up scroll listener
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    nav.addEventListener('scroll', handleScroll, { passive: true });
+    return () => nav.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
 
   const handleSignOut = async () => {
     try {
@@ -111,17 +168,19 @@ const SidebarContent: React.FC<{
   ];
 
   const callQualityItems: NavItem[] = [
+    { href: '/admin-reports', label: 'Performance Reports', icon: BarChart3 },
     { href: '/performance', label: 'Performance Intelligence', icon: Sparkles },
     { href: '/conversation-intelligence', label: 'Conversation AI', icon: Brain },
     { href: '/compliance-alerts', label: 'Compliance Alerts', icon: ShieldAlert },
     { href: '/call-library', label: 'Call Library', icon: Library },
+    { href: '/call-import', label: 'Import Calls', icon: Upload },
     { href: '/coaching', label: 'Agent Coaching', icon: MessageSquare },
-    { href: '/audit-upload', label: 'AI Audit Tool', icon: Upload },
     { href: '/audit-templates', label: 'Audit Templates', icon: Settings },
-    { href: '/five9-config', label: 'Five9 Integration', icon: Phone },
+    { href: '/ai-settings', label: 'AI Settings', icon: Cpu },
   ];
 
   const reportsItems: NavItem[] = [
+    { href: '/analytics', label: 'Analytics Dashboards', icon: PieChart },
     { href: '/payroll', label: 'Payroll Export', icon: DollarSign },
     { href: '/time-off-report', label: 'Time Off Report', icon: FileText },
     { href: '/uto-report', label: 'UTO Report', icon: FileText },
@@ -271,7 +330,7 @@ const SidebarContent: React.FC<{
       <Separator className="bg-[var(--color-border)]" />
 
       {/* Main Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1 scroll-smooth">
+      <nav ref={navRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-1 scroll-smooth">
         {/* Dashboard - Always visible */}
         <Link
           to="/dashboard"

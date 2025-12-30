@@ -4,8 +4,8 @@
 
 /* =========================================================
    GLOBAL THEME VARIABLES
-   - Modern monochromatic design system
-   - Compatible with dark mode
+   - Professional light-mode design system
+   - Clean, modern appearance for enterprise use
    ========================================================= */
 
 @layer base {
@@ -40,70 +40,22 @@
         --sidebar-border: 220 13% 91%;
         --sidebar-ring: 217.2 91.2% 59.8%;
 
-        /* === Custom Color System === */
-        --color-bg: #f5f7fa;
+        /* === Custom Color System (Professional Light Theme) === */
+        --color-bg: #f8fafc;
         --color-surface: #ffffff;
-        --color-text: #111111;
-        --color-subtext: #555555;
-        --color-border: #e0e0e0;
-        --color-accent: #000000;
-        --color-accent-hover: #222222;
+        --color-text: #1e293b;
+        --color-subtext: #64748b;
+        --color-border: #e2e8f0;
+        --color-accent: #2563eb;
+        --color-accent-hover: #1d4ed8;
         --color-danger: #dc2626;
         --color-success: #16a34a;
         --color-warning: #ea580c;
 
-        /* === Shadows === */
-        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-        --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.12);
-        --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.18);
-    }
-
-    .dark {
-        /* === Shadcn/ui Dark Mode === */
-        --background: 222.2 84% 4.9%;
-        --foreground: 210 40% 98%;
-        --card: 222.2 84% 4.9%;
-        --card-foreground: 210 40% 98%;
-        --popover: 222.2 84% 4.9%;
-        --popover-foreground: 210 40% 98%;
-        --primary: 210 40% 98%;
-        --primary-foreground: 222.2 47.4% 11.2%;
-        --secondary: 217.2 32.6% 17.5%;
-        --secondary-foreground: 210 40% 98%;
-        --muted: 217.2 32.6% 17.5%;
-        --muted-foreground: 215 20.2% 65.1%;
-        --accent: 217.2 32.6% 17.5%;
-        --accent-foreground: 210 40% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 210 40% 98%;
-        --border: 217.2 32.6% 17.5%;
-        --input: 217.2 32.6% 17.5%;
-        --ring: 212.7 26.8% 83.9%;
-        --sidebar-background: 240 5.9% 10%;
-        --sidebar-foreground: 240 4.8% 95.9%;
-        --sidebar-primary: 224.3 76.3% 48%;
-        --sidebar-primary-foreground: 0 0% 100%;
-        --sidebar-accent: 240 3.7% 15.9%;
-        --sidebar-accent-foreground: 240 4.8% 95.9%;
-        --sidebar-border: 240 3.7% 15.9%;
-        --sidebar-ring: 217.2 91.2% 59.8%;
-
-        /* === Custom Dark Mode === */
-        --color-bg: #0f0f0f;
-        --color-surface: #1a1a1a;
-        --color-text: #f5f5f5;
-        --color-subtext: #aaaaaa;
-        --color-border: #2b2b2b;
-        --color-accent: #ffffff;
-        --color-accent-hover: #dddddd;
-        --color-danger: #ef4444;
-        --color-success: #22c55e;
-        --color-warning: #f97316;
-
-        /* === Shadows (reverse depth) === */
-        --shadow-sm: 0 1px 2px rgba(255, 255, 255, 0.05);
-        --shadow-md: 0 2px 6px rgba(255, 255, 255, 0.08);
-        --shadow-lg: 0 4px 12px rgba(255, 255, 255, 0.12);
+        /* === Professional Shadows === */
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
     }
 }
 
@@ -203,11 +155,7 @@
     .input-modern:focus {
         outline: none;
         border-color: var(--color-accent);
-        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
-    }
-
-    .dark .input-modern:focus {
-        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
     }
 
     /* === Modern Tables === */

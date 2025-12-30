@@ -25,6 +25,10 @@ import {
   AlertTriangle,
   TrendingUp,
   Calendar,
+  Loader2,
+  Zap,
+  RefreshCw,
+  FileText,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,24 +49,26 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { ReportCardViewer } from './ReportCardViewer';
+import { callIngestionService } from '@/services/CallIngestionService';
 
 interface Call {
   id: string;
-  call_date: string;
-  duration_seconds: number;
-  agent_name: string;
-  disposition: string;
-  direction: string;
-  phone_number: string;
+  call_id: string;
+  call_start_time: string;
+  call_end_time?: string;
+  call_duration_seconds: number;
+  campaign_name?: string;
+  call_type?: string;
+  disposition?: string;
+  customer_phone?: string;
+  customer_name?: string;
   status: string;
   recording_url?: string;
-  transcript?: string;
+  transcript_text?: string;
   user_id: string;
   created_at: string;
-  agent?: { first_name: string; last_name: string; team?: string };
   report_cards?: { id: string; overall_score: number; compliance_score: number }[];
-  conversation_analyses?: { id: string; sentiment: any; compliance_score: number }[];
-  call_tags?: { id: string; tag: { id: string; name: string; color: string } }[];
   is_bookmarked?: boolean;
   notes?: string;
 }
@@ -95,6 +101,18 @@ const TAG_COLORS = [
   { value: 'teal', label: 'Teal', class: 'bg-teal-500' },
 ];
 
+const LOCAL_API_URL = 'http://localhost:3001';
+
+interface ProcessingStatus {
+  isProcessing: boolean;
+  currentCallId?: string;
+  currentStep?: string;
+  processed: number;
+  total: number;
+  successful: number;
+  failed: number;
+}
+
 const getScoreColor = (score: number | null): string => {
   if (score === null || score === undefined) return 'text-gray-500';
   if (score >= 90) return 'text-green-500';
@@ -114,8 +132,10 @@ export const CallLibrary = () => {
   const [filterAgent, setFilterAgent] = useState<string>('all');
   const [filterDisposition, setFilterDisposition] = useState<string>('all');
   const [filterScore, setFilterScore] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [showBookmarked, setShowBookmarked] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>('all');
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [showTagDialog, setShowTagDialog] = useState(false);
   const [showCollectionDialog, setShowCollectionDialog] = useState(false);
@@ -125,57 +145,102 @@ export const CallLibrary = () => {
   const [newCollectionDesc, setNewCollectionDesc] = useState('');
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [dispositions, setDispositions] = useState<string[]>([]);
+  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus | null>(null);
+  const [serverAvailable, setServerAvailable] = useState(false);
+  const [viewingReportCard, setViewingReportCard] = useState<{ callId?: string; reportCardId?: string } | null>(null);
+  const [processingCall, setProcessingCall] = useState<string | null>(null);
+  const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set());
+
+  // Poll for processing status every 3 seconds
+  useEffect(() => {
+    const checkProcessingStatus = async () => {
+      try {
+        const response = await fetch(`${LOCAL_API_URL}/api/status`);
+        if (response.ok) {
+          const status = await response.json();
+          setProcessingStatus(status);
+          setServerAvailable(true);
+
+          // If processing just finished, refresh the call list
+          if (processingStatus?.isProcessing && !status.isProcessing) {
+            fetchData();
+          }
+        } else {
+          setServerAvailable(false);
+          setProcessingStatus(null);
+        }
+      } catch {
+        setServerAvailable(false);
+        setProcessingStatus(null);
+      }
+    };
+
+    checkProcessingStatus();
+    const interval = setInterval(checkProcessingStatus, 3000);
+    return () => clearInterval(interval);
+  }, [processingStatus?.isProcessing]);
 
   const fetchData = useCallback(async () => {
     try {
-      // Fetch calls with related data
+      // Fetch calls with report cards
       const { data: callsData, error: callsError } = await supabase
         .from('calls')
         .select(`
           *,
-          agent:user_id (first_name, last_name, team),
-          report_cards (id, overall_score, compliance_score),
-          conversation_analyses (id, sentiment, compliance_score),
-          call_tags (id, tag:tag_id (id, name, color))
+          report_cards (id, overall_score, compliance_score)
         `)
-        .order('call_date', { ascending: false })
+        .order('call_start_time', { ascending: false })
         .limit(200);
 
-      if (callsError) throw callsError;
-      setCalls(callsData || []);
+      if (callsError) {
+        console.error('Calls query error:', callsError);
+        // Try simpler query without joins
+        const { data: simpleCalls, error: simpleError } = await supabase
+          .from('calls')
+          .select('*')
+          .order('call_start_time', { ascending: false })
+          .limit(200);
 
-      // Extract unique agents and dispositions
-      const uniqueAgents = new Map<string, string>();
+        if (simpleError) throw simpleError;
+        setCalls(simpleCalls || []);
+      } else {
+        setCalls(callsData || []);
+      }
+
+      // Extract unique campaigns and dispositions from loaded calls
+      const loadedCalls = callsData || [];
+      const uniqueCampaigns = new Set<string>();
       const uniqueDispositions = new Set<string>();
-      (callsData || []).forEach((call: Call) => {
-        if (call.agent_name) {
-          uniqueAgents.set(call.user_id, call.agent_name);
+      loadedCalls.forEach((call: any) => {
+        if (call.campaign_name) {
+          uniqueCampaigns.add(call.campaign_name);
         }
         if (call.disposition) {
           uniqueDispositions.add(call.disposition);
         }
       });
-      setAgents(Array.from(uniqueAgents.entries()).map(([id, name]) => ({ id, name })));
+      setAgents(Array.from(uniqueCampaigns).map(name => ({ id: name, name })));
       setDispositions(Array.from(uniqueDispositions));
 
-      // Fetch tags
-      const { data: tagsData, error: tagsError } = await supabase
-        .from('call_tags_master')
-        .select('*')
-        .order('name');
-
-      if (!tagsError) {
-        setTags(tagsData || []);
+      // Tags and collections are optional - don't fail if they don't exist
+      try {
+        const { data: tagsData } = await supabase
+          .from('call_tags_master')
+          .select('*')
+          .order('name');
+        if (tagsData) setTags(tagsData);
+      } catch {
+        // Table might not exist
       }
 
-      // Fetch collections
-      const { data: collectionsData, error: collectionsError } = await supabase
-        .from('call_collections')
-        .select('*')
-        .order('name');
-
-      if (!collectionsError) {
-        setCollections(collectionsData || []);
+      try {
+        const { data: collectionsData } = await supabase
+          .from('call_collections')
+          .select('*')
+          .order('name');
+        if (collectionsData) setCollections(collectionsData);
+      } catch {
+        // Table might not exist
       }
     } catch (error) {
       console.error('Error fetching call library data:', error);
@@ -192,6 +257,145 @@ export const CallLibrary = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Process a single call with AI audit
+  const processCall = async (callId: string) => {
+    const call = calls.find(c => c.id === callId);
+    if (!call || !call.transcript_text) {
+      toast({
+        title: 'Cannot Process',
+        description: 'Call has no transcript to audit',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setProcessingCall(callId);
+    try {
+      // Trigger the audit through the ingestion service
+      await callIngestionService.triggerAudit(callId);
+
+      toast({
+        title: 'Processing Started',
+        description: 'AI is auditing the call. Results will appear shortly.',
+      });
+
+      // Poll for completion
+      const checkCompletion = async () => {
+        const { data: updatedCall } = await supabase
+          .from('calls')
+          .select('status, report_cards(id)')
+          .eq('id', callId)
+          .single();
+
+        if (updatedCall?.status === 'audited' || updatedCall?.report_cards?.length > 0) {
+          setProcessingCall(null);
+          fetchData();
+          toast({
+            title: 'Audit Complete',
+            description: 'The call has been audited successfully.',
+          });
+          return true;
+        }
+        return false;
+      };
+
+      // Check every 2 seconds for up to 60 seconds
+      let attempts = 0;
+      const interval = setInterval(async () => {
+        attempts++;
+        const done = await checkCompletion();
+        if (done || attempts > 30) {
+          clearInterval(interval);
+          if (attempts > 30) {
+            setProcessingCall(null);
+            toast({
+              title: 'Processing',
+              description: 'Audit is taking longer than expected. Check back in a moment.',
+            });
+          }
+        }
+      }, 2000);
+    } catch (error: any) {
+      console.error('Process call error:', error);
+      setProcessingCall(null);
+      toast({
+        title: 'Processing Failed',
+        description: error.message || 'Failed to process call',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Process multiple selected calls
+  const processSelectedCalls = async () => {
+    if (selectedCalls.size === 0) {
+      toast({
+        title: 'No Calls Selected',
+        description: 'Select calls to process by clicking on them',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Batch Processing Started',
+      description: `Processing ${selectedCalls.size} calls...`,
+    });
+
+    let successful = 0;
+    let failed = 0;
+
+    for (const callId of selectedCalls) {
+      try {
+        await callIngestionService.triggerAudit(callId);
+        successful++;
+      } catch {
+        failed++;
+      }
+    }
+
+    setSelectedCalls(new Set());
+    fetchData();
+
+    toast({
+      title: 'Batch Complete',
+      description: `${successful} audited, ${failed} failed`,
+    });
+  };
+
+  // Process all pending calls
+  const processPendingCalls = async () => {
+    const pending = calls.filter(c => c.status !== 'audited' && c.transcript_text);
+    if (pending.length === 0) {
+      toast({
+        title: 'No Pending Calls',
+        description: 'All calls with transcripts have been audited',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Processing All Pending',
+      description: `Starting audit for ${pending.length} calls...`,
+    });
+
+    let processed = 0;
+    for (const call of pending) {
+      try {
+        await callIngestionService.triggerAudit(call.id);
+        processed++;
+      } catch (e) {
+        console.error('Failed to process:', call.id, e);
+      }
+    }
+
+    fetchData();
+    toast({
+      title: 'Batch Complete',
+      description: `Started processing ${processed} calls. Refresh to see results.`,
+    });
+  };
 
   const toggleBookmark = async (callId: string) => {
     const call = calls.find((c) => c.id === callId);
@@ -317,9 +521,16 @@ export const CallLibrary = () => {
 
   // Filter calls
   const filteredCalls = calls.filter((call) => {
+    // Tab-based filtering
+    if (activeTab === 'audited' && call.status !== 'audited') return false;
+    if (activeTab === 'pending' && call.status !== 'pending') return false;
+
     if (showBookmarked && !call.is_bookmarked) return false;
-    if (filterAgent !== 'all' && call.user_id !== filterAgent) return false;
+    if (filterAgent !== 'all' && call.campaign_name !== filterAgent) return false;
     if (filterDisposition !== 'all' && call.disposition !== filterDisposition) return false;
+
+    // Status filter
+    if (filterStatus !== 'all' && call.status !== filterStatus) return false;
 
     // Score filter
     if (filterScore !== 'all') {
@@ -329,20 +540,16 @@ export const CallLibrary = () => {
       if (filterScore === 'low' && (score === undefined || score >= 70)) return false;
     }
 
-    // Tag filter
-    if (filterTags.length > 0) {
-      const callTagIds = call.call_tags?.map((ct) => ct.tag?.id) || [];
-      if (!filterTags.some((tagId) => callTagIds.includes(tagId))) return false;
-    }
-
     // Search
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       return (
-        call.agent_name?.toLowerCase().includes(search) ||
-        call.phone_number?.toLowerCase().includes(search) ||
+        call.campaign_name?.toLowerCase().includes(search) ||
+        call.customer_phone?.toLowerCase().includes(search) ||
+        call.customer_name?.toLowerCase().includes(search) ||
         call.disposition?.toLowerCase().includes(search) ||
-        call.transcript?.toLowerCase().includes(search)
+        call.call_id?.toLowerCase().includes(search) ||
+        call.transcript_text?.toLowerCase().includes(search)
       );
     }
 
@@ -350,18 +557,21 @@ export const CallLibrary = () => {
   });
 
   // Stats
+  const auditedCalls = calls.filter((c) => c.status === 'audited');
+  const pendingCalls = calls.filter((c) => c.status === 'pending');
   const stats = {
     totalCalls: calls.length,
-    bookmarked: calls.filter((c) => c.is_bookmarked).length,
-    avgScore: calls.filter((c) => c.report_cards?.[0]?.overall_score).length
+    audited: auditedCalls.length,
+    pending: pendingCalls.length,
+    avgScore: auditedCalls.length
       ? Math.round(
-          calls
+          auditedCalls
             .filter((c) => c.report_cards?.[0]?.overall_score)
             .reduce((acc, c) => acc + (c.report_cards?.[0]?.overall_score || 0), 0) /
-            calls.filter((c) => c.report_cards?.[0]?.overall_score).length
+            auditedCalls.filter((c) => c.report_cards?.[0]?.overall_score).length || 1
         )
       : 0,
-    withTranscript: calls.filter((c) => c.transcript).length,
+    bookmarked: calls.filter((c) => c.is_bookmarked).length,
   };
 
   if (loading) {
@@ -384,6 +594,15 @@ export const CallLibrary = () => {
           <p className="text-[var(--color-subtext)]">Browse, search, and organize calls for training & review</p>
         </div>
         <div className="flex items-center gap-2">
+          {stats.pending > 0 && (
+            <Button
+              onClick={processPendingCalls}
+              className="bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              Process All Pending ({stats.pending})
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setShowTagDialog(true)}>
             <Tag className="h-4 w-4 mr-2" />
             Manage Tags
@@ -409,10 +628,19 @@ export const CallLibrary = () => {
         <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
-              <Bookmark className="h-4 w-4 text-[var(--color-subtext)]" />
-              <span className="text-xs text-[var(--color-subtext)]">Bookmarked</span>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <span className="text-xs text-[var(--color-subtext)]">Audited</span>
             </div>
-            <p className="text-2xl font-bold text-[var(--color-text)] mt-1">{stats.bookmarked}</p>
+            <p className="text-2xl font-bold text-green-600 mt-1">{stats.audited}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-yellow-500" />
+              <span className="text-xs text-[var(--color-subtext)]">Pending Audit</span>
+            </div>
+            <p className="text-2xl font-bold text-yellow-600 mt-1">{stats.pending}</p>
           </CardContent>
         </Card>
         <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
@@ -421,19 +649,126 @@ export const CallLibrary = () => {
               <BarChart3 className="h-4 w-4 text-[var(--color-subtext)]" />
               <span className="text-xs text-[var(--color-subtext)]">Avg Score</span>
             </div>
-            <p className={`text-2xl font-bold mt-1 ${getScoreColor(stats.avgScore)}`}>{stats.avgScore}%</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-[var(--color-subtext)]" />
-              <span className="text-xs text-[var(--color-subtext)]">With Transcript</span>
-            </div>
-            <p className="text-2xl font-bold text-[var(--color-text)] mt-1">{stats.withTranscript}</p>
+            <p className={`text-2xl font-bold mt-1 ${getScoreColor(stats.avgScore)}`}>{stats.avgScore || 'N/A'}{stats.avgScore ? '%' : ''}</p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Processing Status Banner */}
+      {processingStatus?.isProcessing && (
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 dark:from-blue-950/30 dark:to-indigo-950/30 dark:border-blue-800">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 text-blue-600 dark:text-blue-400 animate-spin" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-yellow-500" />
+                    Processing Calls
+                  </h3>
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    {processingStatus.currentStep || 'Initializing...'}
+                    {processingStatus.currentCallId && (
+                      <span className="ml-2 font-mono text-xs bg-blue-100 dark:bg-blue-900 px-2 py-0.5 rounded">
+                        Call: {processingStatus.currentCallId.slice(0, 8)}...
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {processingStatus.processed}/{processingStatus.total}
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300">Processed</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {processingStatus.successful}
+                  </p>
+                  <p className="text-xs text-green-700 dark:text-green-300">Success</p>
+                </div>
+                {processingStatus.failed > 0 && (
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {processingStatus.failed}
+                    </p>
+                    <p className="text-xs text-red-700 dark:text-red-300">Failed</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Progress bar */}
+            {processingStatus.total > 0 && (
+              <div className="mt-4">
+                <div className="h-2 bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-500"
+                    style={{ width: `${(processingStatus.processed / processingStatus.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recently Completed Processing */}
+      {!processingStatus?.isProcessing && processingStatus && (processingStatus.successful > 0 || processingStatus.failed > 0) && (
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 dark:from-green-950/30 dark:to-emerald-950/30 dark:border-green-800">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <span className="font-medium text-green-900 dark:text-green-100">
+                  Processing Complete
+                </span>
+                <Badge variant="outline" className="text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">
+                  {processingStatus.successful} audited
+                </Badge>
+                {processingStatus.failed > 0 && (
+                  <Badge variant="outline" className="text-red-700 dark:text-red-300 border-red-300 dark:border-red-700">
+                    {processingStatus.failed} failed
+                  </Badge>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fetchData()}
+                className="text-green-700 dark:text-green-300"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh List
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="all">All Calls ({stats.totalCalls})</TabsTrigger>
+          <TabsTrigger value="audited" className="text-green-600">
+            <CheckCircle2 className="h-4 w-4 mr-1" />
+            Audited ({stats.audited})
+          </TabsTrigger>
+          <TabsTrigger value="pending" className="text-yellow-600">
+            <Clock className="h-4 w-4 mr-1" />
+            Pending ({stats.pending})
+          </TabsTrigger>
+          {processingStatus?.isProcessing && (
+            <TabsTrigger value="processing" className="text-blue-600">
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              Processing ({processingStatus.total - processingStatus.processed})
+            </TabsTrigger>
+          )}
+        </TabsList>
+      </Tabs>
 
       {/* Filters */}
       <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
@@ -544,72 +879,81 @@ export const CallLibrary = () => {
                 {filteredCalls.map((call) => {
                   const score = call.report_cards?.[0]?.overall_score;
                   const complianceScore = call.report_cards?.[0]?.compliance_score;
-                  const sentiment = call.conversation_analyses?.[0]?.sentiment;
+                  const isCurrentlyProcessing = processingStatus?.isProcessing && processingStatus?.currentCallId === call.id;
 
                   return (
                     <div
                       key={call.id}
-                      className={`p-4 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] cursor-pointer hover:bg-[var(--color-surface)] transition-colors ${
+                      className={`p-4 rounded-lg bg-[var(--color-bg)] border cursor-pointer hover:bg-[var(--color-surface)] transition-colors ${
                         selectedCall?.id === call.id ? 'ring-2 ring-[var(--color-accent)]' : ''
-                      }`}
+                      } ${isCurrentlyProcessing ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/20 animate-pulse' : 'border-[var(--color-border)]'}`}
                       onClick={() => setSelectedCall(call)}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-start gap-3">
-                          <div className="p-2 rounded-full bg-[var(--color-surface)]">
-                            <Phone className="h-4 w-4 text-[var(--color-accent)]" />
+                          <div className={`p-2 rounded-full ${isCurrentlyProcessing ? 'bg-blue-100 dark:bg-blue-900/50' : 'bg-[var(--color-surface)]'}`}>
+                            {isCurrentlyProcessing ? (
+                              <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />
+                            ) : (
+                              <Phone className="h-4 w-4 text-[var(--color-accent)]" />
+                            )}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className="font-medium text-[var(--color-text)]">{call.agent_name}</p>
+                              <p className="font-medium text-[var(--color-text)]">{call.campaign_name || call.call_id}</p>
                               {call.is_bookmarked && (
                                 <Bookmark className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                              )}
+                              {isCurrentlyProcessing && (
+                                <Badge variant="default" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs">
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  {processingStatus?.currentStep || 'Processing'}
+                                </Badge>
+                              )}
+                              {call.status === 'audited' && !isCurrentlyProcessing && (
+                                <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Audited
+                                </Badge>
                               )}
                             </div>
                             <div className="flex items-center gap-3 mt-1 text-xs text-[var(--color-subtext)]">
                               <span className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3" />
-                                {new Date(call.call_date).toLocaleString()}
+                                {call.call_start_time ? new Date(call.call_start_time).toLocaleString() : 'N/A'}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
-                                {Math.floor((call.duration_seconds || 0) / 60)}m {(call.duration_seconds || 0) % 60}s
+                                {Math.floor((call.call_duration_seconds || 0) / 60)}m {(call.call_duration_seconds || 0) % 60}s
                               </span>
                               <Badge variant="secondary" className="text-xs">
-                                {call.disposition || 'Unknown'}
+                                {call.disposition || call.call_type || 'Unknown'}
                               </Badge>
                             </div>
-                            {/* Tags */}
-                            {call.call_tags && call.call_tags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {call.call_tags.map((ct) => (
-                                  <Badge
-                                    key={ct.id}
-                                    variant="outline"
-                                    className="text-xs"
-                                  >
-                                    <span className={`w-2 h-2 rounded-full mr-1 bg-${ct.tag?.color || 'gray'}-500`} />
-                                    {ct.tag?.name}
-                                  </Badge>
-                                ))}
-                              </div>
+                            {call.customer_name && (
+                              <p className="text-xs text-[var(--color-subtext)] mt-1">
+                                Customer: {call.customer_name}
+                              </p>
                             )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           {score !== undefined && (
-                            <div className="text-right">
-                              <p className="text-xs text-[var(--color-subtext)]">Score</p>
-                              <p className={`text-lg font-bold ${getScoreColor(score)}`}>{score}%</p>
-                            </div>
-                          )}
-                          {sentiment && (
-                            <Badge variant={
-                              sentiment.overall === 'positive' ? 'default' :
-                              sentiment.overall === 'negative' ? 'destructive' : 'secondary'
-                            }>
-                              {sentiment.overall}
-                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex items-center gap-2 h-auto py-1 px-2"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewingReportCard({ callId: call.id });
+                              }}
+                            >
+                              <div className="text-right">
+                                <p className="text-xs text-[var(--color-subtext)]">Score</p>
+                                <p className={`text-lg font-bold ${getScoreColor(score)}`}>{score}%</p>
+                              </div>
+                              <FileText className="h-4 w-4 text-[var(--color-accent)]" />
+                            </Button>
                           )}
                           <Button
                             size="icon"
@@ -685,25 +1029,82 @@ export const CallLibrary = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-xs text-[var(--color-subtext)]">Agent</p>
-                  <p className="font-medium text-[var(--color-text)]">{selectedCall.agent_name}</p>
+                  <p className="text-xs text-[var(--color-subtext)]">Campaign</p>
+                  <p className="font-medium text-[var(--color-text)]">{selectedCall.campaign_name || selectedCall.call_id}</p>
                 </div>
+                {selectedCall.customer_name && (
+                  <div>
+                    <p className="text-xs text-[var(--color-subtext)]">Customer</p>
+                    <p className="font-medium text-[var(--color-text)]">{selectedCall.customer_name}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs text-[var(--color-subtext)]">Date & Time</p>
                   <p className="text-[var(--color-text)]">
-                    {new Date(selectedCall.call_date).toLocaleString()}
+                    {selectedCall.call_start_time ? new Date(selectedCall.call_start_time).toLocaleString() : 'N/A'}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--color-subtext)]">Duration</p>
                   <p className="text-[var(--color-text)]">
-                    {Math.floor((selectedCall.duration_seconds || 0) / 60)}m {(selectedCall.duration_seconds || 0) % 60}s
+                    {Math.floor((selectedCall.call_duration_seconds || 0) / 60)}m {(selectedCall.call_duration_seconds || 0) % 60}s
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--color-subtext)]">Disposition</p>
-                  <Badge variant="secondary">{selectedCall.disposition || 'Unknown'}</Badge>
+                  <Badge variant="secondary">{selectedCall.disposition || selectedCall.call_type || 'Unknown'}</Badge>
                 </div>
+
+                {/* Process Button - Show if call has transcript but no report card */}
+                {selectedCall.transcript_text && !selectedCall.report_cards?.[0] && (
+                  <div className="pt-4 border-t border-[var(--color-border)]">
+                    <Button
+                      className="w-full bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
+                      onClick={() => processCall(selectedCall.id)}
+                      disabled={processingCall === selectedCall.id}
+                    >
+                      {processingCall === selectedCall.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="h-4 w-4 mr-2" />
+                          Process with AI
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-xs text-[var(--color-subtext)] mt-2 text-center">
+                      AI will analyze the transcript and generate a report card
+                    </p>
+                  </div>
+                )}
+
+                {/* Re-process button for already audited calls */}
+                {selectedCall.report_cards?.[0] && (
+                  <div className="pt-4 border-t border-[var(--color-border)]">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => processCall(selectedCall.id)}
+                      disabled={processingCall === selectedCall.id}
+                    >
+                      {processingCall === selectedCall.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Re-processing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Re-process Call
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
 
                 {selectedCall.report_cards?.[0] && (
                   <div className="pt-4 border-t border-[var(--color-border)]">
@@ -722,6 +1123,28 @@ export const CallLibrary = () => {
                         </span>
                       </div>
                     </div>
+                    <Button
+                      size="sm"
+                      className="w-full mt-3 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
+                      onClick={() => setViewingReportCard({ callId: selectedCall.id })}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      View Full Report Card
+                    </Button>
+                  </div>
+                )}
+
+                {/* Audio Player */}
+                {selectedCall.recording_url && (
+                  <div className="pt-4 border-t border-[var(--color-border)]">
+                    <p className="text-xs text-[var(--color-subtext)] mb-2">Recording</p>
+                    <audio
+                      controls
+                      className="w-full h-10"
+                      src={selectedCall.recording_url}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
                   </div>
                 )}
 
@@ -729,9 +1152,7 @@ export const CallLibrary = () => {
                 <div className="pt-4 border-t border-[var(--color-border)]">
                   <p className="text-xs text-[var(--color-subtext)] mb-2">Add Tag</p>
                   <div className="flex flex-wrap gap-1">
-                    {tags
-                      .filter((t) => !selectedCall.call_tags?.some((ct) => ct.tag?.id === t.id))
-                      .map((tag) => (
+                    {tags.length > 0 ? tags.map((tag) => (
                         <Badge
                           key={tag.id}
                           variant="outline"
@@ -741,20 +1162,35 @@ export const CallLibrary = () => {
                           <Plus className="h-3 w-3 mr-1" />
                           {tag.name}
                         </Badge>
-                      ))}
+                      )) : (
+                        <p className="text-xs text-[var(--color-subtext)]">No tags available</p>
+                      )}
                   </div>
                 </div>
 
                 {/* Actions */}
                 <div className="pt-4 border-t border-[var(--color-border)] flex flex-wrap gap-2">
                   {selectedCall.recording_url && (
-                    <Button size="sm" variant="outline">
-                      <Play className="h-3 w-3 mr-1" />
-                      Play
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(selectedCall.recording_url, '_blank')}
+                    >
+                      <Download className="h-3 w-3 mr-1" />
+                      Download
                     </Button>
                   )}
-                  {selectedCall.transcript && (
-                    <Button size="sm" variant="outline">
+                  {selectedCall.transcript_text && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        toast({
+                          title: 'Transcript',
+                          description: selectedCall.transcript_text?.substring(0, 200) + '...',
+                        });
+                      }}
+                    >
                       <MessageSquare className="h-3 w-3 mr-1" />
                       Transcript
                     </Button>
@@ -862,6 +1298,14 @@ export const CallLibrary = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Report Card Viewer */}
+      <ReportCardViewer
+        callId={viewingReportCard?.callId}
+        reportCardId={viewingReportCard?.reportCardId}
+        isOpen={!!viewingReportCard}
+        onClose={() => setViewingReportCard(null)}
+      />
     </div>
   );
 };

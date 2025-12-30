@@ -30,6 +30,10 @@ import CoachingPage from "@/pages/CoachingPage";
 import ConversationIntelligencePage from "@/pages/ConversationIntelligencePage";
 import ComplianceAlertsPage from "@/pages/ComplianceAlertsPage";
 import CallLibraryPage from "@/pages/CallLibraryPage";
+import CallImportPage from "@/pages/CallImportPage";
+import AdminReportsPage from "@/pages/AdminReportsPage";
+import AISettingsPage from "@/pages/AISettingsPage";
+import AnalyticsDashboardsPage from "@/pages/AnalyticsDashboardsPage";
 import { FullPageLoader } from "@/components/ui/loading-spinner";
 
 const queryClient = new QueryClient();
@@ -152,6 +156,30 @@ const AppContent: React.FC = () => {
             path="/call-library"
             element={
               canManageAllTimeEntries() ? <CallLibraryPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/call-import"
+            element={
+              canManageAllTimeEntries() ? <CallImportPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/admin-reports"
+            element={
+              canManageUsers() ? <AdminReportsPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/ai-settings"
+            element={
+              canManageUsers() ? <AISettingsPage /> : <NotFound />
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              canManageUsers() ? <AnalyticsDashboardsPage /> : <NotFound />
             }
           />
           <Route path="*" element={<NotFound />} />

@@ -1,0 +1,29 @@
+{
+  "name": "cliopa-call-sync",
+  "version": "1.0.0",
+  "description": "Syncs call recordings from SQL Server to Cliopa/Supabase",
+  "main": "sync.js",
+  "type": "module",
+  "scripts": {
+    "sync": "node sync.js",
+    "sync:once": "node sync.js --once",
+    "test-connection": "node test-connection.js",
+    "audit": "node audio-audit.js",
+    "audit:test": "node audio-audit.js --test",
+    "audit:openai": "node audio-audit.js --openai",
+    "audit:local": "node audio-audit-local.js",
+    "audit:local:test": "node audio-audit-local.js --test",
+    "test-lm": "node test-audit-local.js",
+    "api": "node api-server.js",
+    "api:start": "node api-server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^5.2.0",
+    "mssql": "^10.0.2",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.0.0"
+  }
+}

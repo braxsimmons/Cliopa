@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import GoogleSignInButton from "./oath";
-import { Sun, Moon, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 export const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -22,24 +22,30 @@ export const AuthPage = () => {
   const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const { signIn, signUp } = useAuth();
+  const [showResetForm, setShowResetForm] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const { signIn, signUp, resetPassword } = useAuth();
   const { toast } = useToast();
 
-  // Initialize theme
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
-    setTheme(initialTheme);
-    document.documentElement.classList.toggle('dark', initialTheme === 'dark');
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      toast({
+        title: "Email Required",
+        description: "Please enter your email address to reset your password.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await resetPassword(email);
+      setShowResetForm(false);
+    } catch (error) {
+      // Error already handled in resetPassword
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,15 +79,6 @@ export const AuthPage = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] px-4 py-8">
-      {/* Theme toggle button */}
-      <button
-        onClick={toggleTheme}
-        className="fixed top-4 right-4 p-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
-        aria-label="Toggle theme"
-      >
-        {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-      </button>
-
       <Card className="w-full max-w-md bg-[var(--color-surface)] border-[var(--color-border)] shadow-lg">
         <CardHeader className="text-center space-y-4">
           <div className="flex justify-center">
@@ -148,9 +145,20 @@ export const AuthPage = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-[var(--color-text)]">
-                Password
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-[var(--color-text)]">
+                  Password
+                </Label>
+                {isLogin && (
+                  <button
+                    type="button"
+                    onClick={() => setShowResetForm(true)}
+                    className="text-xs text-[var(--color-accent)] hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <Input
                   id="password"
@@ -217,6 +225,64 @@ export const AuthPage = () => {
           </p>
         </CardContent>
       </Card>
+
+      {/* Password Reset Modal */}
+      {showResetForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <Card className="w-full max-w-md bg-[var(--color-surface)] border-[var(--color-border)] shadow-xl">
+            <CardHeader>
+              <CardTitle className="text-xl text-[var(--color-text)]">
+                Reset Password
+              </CardTitle>
+              <CardDescription className="text-[var(--color-subtext)]">
+                Enter your email address and we'll send you a link to reset your password.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="reset-email" className="text-[var(--color-text)]">
+                    Email Address
+                  </Label>
+                  <Input
+                    id="reset-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="you@example.com"
+                    className="bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text)] placeholder:text-[var(--color-subtext)]"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowResetForm(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
+                    disabled={resetLoading}
+                  >
+                    {resetLoading ? (
+                      <span className="flex items-center gap-2">
+                        <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                        Sending...
+                      </span>
+                    ) : (
+                      "Send Reset Link"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

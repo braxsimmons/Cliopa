@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, TrendingUp, Award, AlertCircle, MessageSquareWarning, Eye, ChevronDown, ChevronUp } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { Loader2, TrendingUp, Award, AlertCircle, MessageSquareWarning, Eye, ChevronDown, ChevronUp, FileText, Play, Phone, Clock, User } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { DisputeForm } from "@/components/disputes/DisputeForm";
 import { DisputeManagement } from "@/components/disputes/DisputeManagement";
+import { ReportCardViewer } from "@/components/admin/ReportCardViewer";
 import { supabase } from "@/integrations/supabase/client";
 
 export const ReportCardDashboard: React.FC = () => {
@@ -29,11 +30,51 @@ export const ReportCardDashboard: React.FC = () => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [disputeStatuses, setDisputeStatuses] = useState<Record<string, string>>({});
 
+  // Report card viewer state
+  const [viewingReportCardId, setViewingReportCardId] = useState<string | null>(null);
+
+  // Call data with recordings
+  const [callData, setCallData] = useState<Record<string, any>>({});
+
   useEffect(() => {
     fetchTrendData();
     fetchPerformanceSummary();
     fetchDisputeStatuses();
+    fetchCallData();
   }, []);
+
+  // Fetch call data for report cards
+  const fetchCallData = async () => {
+    try {
+      const { data } = await supabase
+        .from('report_cards')
+        .select(`
+          id,
+          call_id,
+          call:call_id (
+            id,
+            call_start_time,
+            call_duration_seconds,
+            recording_url,
+            campaign_name,
+            disposition
+          )
+        `)
+        .not('call_id', 'is', null);
+
+      if (data) {
+        const dataMap: Record<string, any> = {};
+        data.forEach((item: any) => {
+          if (item.call) {
+            dataMap[item.id] = item.call;
+          }
+        });
+        setCallData(dataMap);
+      }
+    } catch (error) {
+      console.error('Error fetching call data:', error);
+    }
+  };
 
   // Fetch dispute statuses for all report cards
   const fetchDisputeStatuses = async () => {
@@ -222,6 +263,10 @@ export const ReportCardDashboard: React.FC = () => {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="report-cards">Report Cards</TabsTrigger>
+            <TabsTrigger value="rep-insights" className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              Rep Insights
+            </TabsTrigger>
             <TabsTrigger value="disputes" className="flex items-center gap-2">
               <MessageSquareWarning className="h-4 w-4" />
               Score Disputes
@@ -230,6 +275,10 @@ export const ReportCardDashboard: React.FC = () => {
 
           <TabsContent value="report-cards" className="mt-6">
             {renderReportCardsContent()}
+          </TabsContent>
+
+          <TabsContent value="rep-insights" className="mt-6">
+            {renderRepInsights()}
           </TabsContent>
 
           <TabsContent value="disputes" className="mt-6">
@@ -252,8 +301,196 @@ export const ReportCardDashboard: React.FC = () => {
           onSubmitted={handleDisputeSubmitted}
         />
       )}
+
+      {/* Report Card Viewer */}
+      <ReportCardViewer
+        reportCardId={viewingReportCardId || undefined}
+        isOpen={!!viewingReportCardId}
+        onClose={() => setViewingReportCardId(null)}
+      />
     </div>
   );
+
+  function renderRepInsights() {
+    // Group report cards by employee
+    const repData: Record<string, {
+      name: string;
+      team: string;
+      email: string;
+      userId: string;
+      totalAudits: number;
+      avgOverall: number;
+      avgCompliance: number;
+      avgCommunication: number;
+      avgEmpathy: number;
+      recentScores: number[];
+      trend: 'up' | 'down' | 'stable';
+    }> = {};
+
+    reportCards.forEach((rc) => {
+      const userId = rc.user_id;
+      if (!repData[userId]) {
+        repData[userId] = {
+          name: `${rc.profiles?.first_name || ''} ${rc.profiles?.last_name || ''}`.trim() || 'Unknown',
+          team: rc.profiles?.team || 'No Team',
+          email: rc.profiles?.email || '',
+          userId,
+          totalAudits: 0,
+          avgOverall: 0,
+          avgCompliance: 0,
+          avgCommunication: 0,
+          avgEmpathy: 0,
+          recentScores: [],
+          trend: 'stable',
+        };
+      }
+      repData[userId].totalAudits++;
+      repData[userId].recentScores.push(rc.overall_score);
+    });
+
+    // Calculate averages and trends
+    Object.values(repData).forEach((rep) => {
+      const scores = rep.recentScores;
+      rep.avgOverall = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+
+      // Get compliance/communication/empathy averages
+      const repCards = reportCards.filter(rc => rc.user_id === rep.userId);
+      const compScores = repCards.filter(rc => rc.compliance_score).map(rc => rc.compliance_score!);
+      const commScores = repCards.filter(rc => rc.communication_score).map(rc => rc.communication_score!);
+      const empScores = repCards.filter(rc => rc.empathy_score).map(rc => rc.empathy_score!);
+
+      if (compScores.length) rep.avgCompliance = Math.round(compScores.reduce((a, b) => a + b, 0) / compScores.length);
+      if (commScores.length) rep.avgCommunication = Math.round(commScores.reduce((a, b) => a + b, 0) / commScores.length);
+      if (empScores.length) rep.avgEmpathy = Math.round(empScores.reduce((a, b) => a + b, 0) / empScores.length);
+
+      // Calculate trend (compare first half vs second half of scores)
+      if (scores.length >= 4) {
+        const mid = Math.floor(scores.length / 2);
+        const firstHalf = scores.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
+        const secondHalf = scores.slice(mid).reduce((a, b) => a + b, 0) / (scores.length - mid);
+        if (secondHalf > firstHalf + 3) rep.trend = 'up';
+        else if (secondHalf < firstHalf - 3) rep.trend = 'down';
+      }
+    });
+
+    const sortedReps = Object.values(repData).sort((a, b) => b.avgOverall - a.avgOverall);
+
+    // Prepare chart data
+    const chartData = sortedReps.slice(0, 10).map(rep => ({
+      name: rep.name.split(' ')[0], // First name only for chart
+      overall: rep.avgOverall,
+      compliance: rep.avgCompliance,
+      communication: rep.avgCommunication,
+    }));
+
+    return (
+      <div className="space-y-6">
+        {/* Rep Performance Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Rep Performance Comparison</CardTitle>
+            <CardDescription>Average scores by category (Top 10 reps)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="overall" name="Overall" fill="var(--color-accent)" />
+                  <Bar dataKey="compliance" name="Compliance" fill="#3b82f6" />
+                  <Bar dataKey="communication" name="Communication" fill="#22c55e" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-8 text-[var(--color-subtext)]">No data available</div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Rep Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedReps.map((rep) => (
+            <Card
+              key={rep.userId}
+              className="cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => {
+                setSelectedEmployee(rep.userId);
+                setActiveTab('report-cards');
+              }}
+            >
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="font-semibold text-[var(--color-text)]">{rep.name}</h3>
+                    <p className="text-sm text-[var(--color-subtext)]">{rep.team}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-2xl font-bold ${getScoreColor(rep.avgOverall)}`}>
+                      {rep.avgOverall}%
+                    </p>
+                    <div className="flex items-center gap-1 justify-end">
+                      {rep.trend === 'up' && <TrendingUp className="h-4 w-4 text-green-500" />}
+                      {rep.trend === 'down' && <TrendingUp className="h-4 w-4 text-red-500 rotate-180" />}
+                      <span className="text-xs text-[var(--color-subtext)]">
+                        {rep.totalAudits} audits
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-[var(--color-surface)] rounded p-2">
+                    <p className="text-xs text-[var(--color-subtext)]">Compliance</p>
+                    <p className={`font-bold ${getScoreColor(rep.avgCompliance)}`}>
+                      {rep.avgCompliance || '-'}%
+                    </p>
+                  </div>
+                  <div className="bg-[var(--color-surface)] rounded p-2">
+                    <p className="text-xs text-[var(--color-subtext)]">Communication</p>
+                    <p className={`font-bold ${getScoreColor(rep.avgCommunication)}`}>
+                      {rep.avgCommunication || '-'}%
+                    </p>
+                  </div>
+                  <div className="bg-[var(--color-surface)] rounded p-2">
+                    <p className="text-xs text-[var(--color-subtext)]">Empathy</p>
+                    <p className={`font-bold ${getScoreColor(rep.avgEmpathy)}`}>
+                      {rep.avgEmpathy || '-'}%
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-4"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedEmployee(rep.userId);
+                    setActiveTab('report-cards');
+                  }}
+                >
+                  View All Audits
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {sortedReps.length === 0 && (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <User className="h-12 w-12 text-[var(--color-subtext)] mx-auto mb-4" />
+              <p className="text-[var(--color-subtext)]">No rep data available yet</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   function renderReportCardsContent() {
     return (
@@ -480,6 +717,24 @@ export const ReportCardDashboard: React.FC = () => {
                           </td>
                           <td className="p-3">
                             <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setViewingReportCardId(rc.id)}
+                                className="text-[var(--color-accent)]"
+                              >
+                                <FileText className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                              {callData[rc.id]?.recording_url && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => window.open(callData[rc.id].recording_url, '_blank')}
+                                >
+                                  <Play className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"

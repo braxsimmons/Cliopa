@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Shield,
   Heart,
+  Play,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useToast } from '@/hooks/use-toast';
 import { CoachingService, AgentScorecard, AgentGoal, CoachingSession } from '@/services/CoachingService';
 import { supabase } from '@/integrations/supabase/client';
+import { ReportCardViewer } from './ReportCardViewer';
 import {
   LineChart,
   Line,
@@ -67,9 +69,11 @@ interface ReportCard {
   created_at: string;
   call?: {
     id: string;
-    call_date: string;
-    duration_seconds: number;
+    call_start_time: string;
+    call_duration_seconds: number;
     disposition: string;
+    recording_url?: string;
+    campaign_name?: string;
   };
 }
 
@@ -108,6 +112,7 @@ export const AgentScorecardDetail = ({ agentId, onClose }: AgentScorecardDetailP
   const [recentReportCards, setRecentReportCards] = useState<ReportCard[]>([]);
   const [scoreHistory, setScoreHistory] = useState<ScoreHistory[]>([]);
   const [teamAverage, setTeamAverage] = useState<number>(0);
+  const [viewingReportCard, setViewingReportCard] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAgentData();
@@ -138,7 +143,7 @@ export const AgentScorecardDetail = ({ agentId, onClose }: AgentScorecardDetailP
           communication_score,
           empathy_score,
           created_at,
-          call:call_id (id, call_date, duration_seconds, disposition)
+          call:call_id (id, call_start_time, call_duration_seconds, disposition, recording_url, campaign_name)
         `)
         .eq('user_id', agentId)
         .order('created_at', { ascending: false })
@@ -680,7 +685,11 @@ export const AgentScorecardDetail = ({ agentId, onClose }: AgentScorecardDetailP
                   {recentReportCards.length > 0 ? (
                     <div className="space-y-2">
                       {recentReportCards.slice(0, 20).map((rc) => (
-                        <div key={rc.id} className="flex items-center gap-4 p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
+                        <div
+                          key={rc.id}
+                          className="flex items-center gap-4 p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] cursor-pointer hover:bg-[var(--color-bg)] transition-colors"
+                          onClick={() => setViewingReportCard(rc.id)}
+                        >
                           <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${getScoreColor(rc.overall_score)}20` }}>
                             <span className="font-bold" style={{ color: getScoreColor(rc.overall_score) }}>
                               {rc.overall_score}
@@ -696,8 +705,25 @@ export const AgentScorecardDetail = ({ agentId, onClose }: AgentScorecardDetailP
                                 <>
                                   <span className="text-[var(--color-subtext)]">•</span>
                                   <span className="text-xs text-[var(--color-subtext)]">
-                                    {Math.floor((rc.call.duration_seconds || 0) / 60)}m {(rc.call.duration_seconds || 0) % 60}s
+                                    {Math.floor((rc.call.call_duration_seconds || 0) / 60)}m {(rc.call.call_duration_seconds || 0) % 60}s
                                   </span>
+                                  {rc.call.recording_url && (
+                                    <>
+                                      <span className="text-[var(--color-subtext)]">•</span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2 text-xs text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          window.open(rc.call?.recording_url, '_blank');
+                                        }}
+                                      >
+                                        <Play className="h-3 w-3 mr-1" />
+                                        Play
+                                      </Button>
+                                    </>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -723,6 +749,13 @@ export const AgentScorecardDetail = ({ agentId, onClose }: AgentScorecardDetailP
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Report Card Viewer */}
+      <ReportCardViewer
+        reportCardId={viewingReportCard || undefined}
+        isOpen={!!viewingReportCard}
+        onClose={() => setViewingReportCard(null)}
+      />
     </div>
   );
 };

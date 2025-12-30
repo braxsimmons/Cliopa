@@ -383,8 +383,8 @@ const TemplateEditorDialog: React.FC<TemplateEditorDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col bg-[var(--color-surface)] border-[var(--color-border)]">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl h-[85vh] flex flex-col bg-[var(--color-surface)] border-[var(--color-border)]">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-[var(--color-text)]">
             {template ? 'Edit Audit Template' : 'Create New Audit Template'}
           </DialogTitle>
@@ -393,7 +393,8 @@ const TemplateEditorDialog: React.FC<TemplateEditorDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <div className="flex-1 overflow-hidden min-h-0">
+          <ScrollArea className="h-full pr-4">
           <div className="space-y-6 py-4">
             {/* Basic Info */}
             <div className="space-y-4">
@@ -480,9 +481,10 @@ const TemplateEditorDialog: React.FC<TemplateEditorDialogProps> = ({
               )}
             </div>
           </div>
-        </ScrollArea>
+          </ScrollArea>
+        </div>
 
-        <DialogFooter className="border-t border-[var(--color-border)] pt-4">
+        <DialogFooter className="flex-shrink-0 border-t border-[var(--color-border)] pt-4">
           <Button
             variant="outline"
             onClick={onClose}
