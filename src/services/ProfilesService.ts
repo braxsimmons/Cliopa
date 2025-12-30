@@ -147,38 +147,54 @@ export const ProfilesSelectRoleForUser = async (userId: string) => {
  * @param userId id of the user to check
  */
 export const ProfileVerifyPtoRule = async (userId: string) => {
-  const { data: verifyRuleData, error: verifyRuleError } = await supabase
-    .from("profiles")
-    .select(
-      `pto_rule_advance_at,
-        pto_rule:time_off_rules!pto_rule_fkey (
-        id,
-        progression
-        )
-    `
-    )
-    .eq("id", userId)
-    .single();
+  try {
+    const { data: verifyRuleData, error: verifyRuleError } = await supabase
+      .from("profiles")
+      .select(
+        `pto_rule_advance_at,
+          pto_rule:time_off_rules!pto_rule_fkey (
+          id,
+          progression
+          )
+      `
+      )
+      .eq("id", userId)
+      .single();
 
-  const now = new Date();
-  const parts = verifyRuleData.pto_rule_advance_at.split("-"); // ["2025","08","13"]
-  const updateDate = new Date(
-    parseInt(parts[0]),
-    parseInt(parts[1]) - 1,
-    parseInt(parts[2])
-  );
-  if (now >= updateDate && verifyRuleData.pto_rule["progression"] !== null) {
-    const newDate = new Date(
-      parseInt(parts[0]) + 1,
+    // Exit early if no data, error, or missing required fields
+    if (verifyRuleError || !verifyRuleData) {
+      console.log("ProfileVerifyPtoRule: No profile data found for user", userId);
+      return;
+    }
+
+    if (!verifyRuleData.pto_rule_advance_at || !verifyRuleData.pto_rule) {
+      console.log("ProfileVerifyPtoRule: Missing PTO rule data for user", userId);
+      return;
+    }
+
+    const now = new Date();
+    const parts = verifyRuleData.pto_rule_advance_at.split("-"); // ["2025","08","13"]
+    const updateDate = new Date(
+      parseInt(parts[0]),
       parseInt(parts[1]) - 1,
       parseInt(parts[2])
     );
-    await supabase
-      .from("profiles")
-      .update({
-        pto_rule: verifyRuleData.pto_rule["progression"],
-        pto_rule_advance_at: newDate,
-      })
-      .eq("id", userId);
+    if (now >= updateDate && verifyRuleData.pto_rule["progression"] !== null) {
+      const newDate = new Date(
+        parseInt(parts[0]) + 1,
+        parseInt(parts[1]) - 1,
+        parseInt(parts[2])
+      );
+      await supabase
+        .from("profiles")
+        .update({
+          pto_rule: verifyRuleData.pto_rule["progression"],
+          pto_rule_advance_at: newDate,
+        })
+        .eq("id", userId);
+    }
+  } catch (error) {
+    console.error("ProfileVerifyPtoRule: Unexpected error", error);
+    // Don't throw - this is a non-critical background operation
   }
 };
