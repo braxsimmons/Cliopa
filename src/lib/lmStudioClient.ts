@@ -45,10 +45,11 @@ const DEFAULT_CONFIG: LMStudioConfig = {
 
 export class LMStudioClient {
   private config: LMStudioConfig;
+  private initialized: boolean = false;
 
   constructor(config?: Partial<LMStudioConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.autoInitModel(); // 🔁 Auto-detect model on startup
+    // Don't auto-init on construction - wait until actually needed
   }
 
   /** 🔍 Check if LM Studio is available */
@@ -59,12 +60,20 @@ export class LMStudioClient {
         headers: {
           "Content-Type": "application/json",
         },
-        mode: "cors", // Explicitly request CORS
+        mode: "cors",
       });
+
+      // Also check that we got JSON, not HTML
+      const contentType = response.headers.get("content-type");
+      if (!contentType?.includes("application/json")) {
+        console.warn("LM Studio returned non-JSON response");
+        return false;
+      }
+
       return response.ok;
     } catch (err) {
-      // CORS errors will be caught here
-      console.warn("LM Studio not available (check CORS settings):", err);
+      // CORS errors or network failures
+      console.warn("LM Studio not available:", err);
       return false;
     }
   }
@@ -77,18 +86,30 @@ export class LMStudioClient {
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!response.ok) throw new Error("Failed to fetch models from LM Studio");
+      if (!response.ok) {
+        return [];
+      }
+
+      // Guard against HTML responses (happens when LM Studio isn't running)
+      const contentType = response.headers.get("content-type");
+      if (!contentType?.includes("application/json")) {
+        console.warn("LM Studio models endpoint returned non-JSON");
+        return [];
+      }
 
       const data = await response.json();
       return data?.data?.map((m: any) => m.id) || [];
     } catch (err) {
-      console.error("Error fetching models:", err);
+      // Silently fail - LM Studio is optional
       return [];
     }
   }
 
-  /** 🚀 Auto-detect best model */
+  /** 🚀 Auto-detect best model (called lazily) */
   private async autoInitModel() {
+    if (this.initialized) return;
+    this.initialized = true;
+
     const models = await this.getAvailableModels();
     if (models.length && !models.includes(this.config.model)) {
       this.config.model = models[0];
@@ -105,6 +126,9 @@ export class LMStudioClient {
     if (!isAvailable) {
       throw new Error("LM Studio API is not available. Start it on port 1234.");
     }
+
+    // Lazy init model detection only when actually processing
+    await this.autoInitModel();
 
     const criteria = auditTemplate || (await this.loadAuditTemplate());
     const prompt = this.buildAuditPrompt(transcript, criteria);

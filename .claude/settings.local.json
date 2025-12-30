@@ -29,7 +29,8 @@
       "Bash(wc:*)",
       "Bash(ls:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix blank screen after login for users without PTO rules\n\nProfileVerifyPtoRule was crashing when users didn''t have pto_rule_advance_at\nor pto_rule set, causing the entire app to white-screen after login.\nAdded null checks and try-catch to make this a non-blocking operation.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix blank screen after login for users without PTO rules\n\nProfileVerifyPtoRule was crashing when users didn''t have pto_rule_advance_at\nor pto_rule set, causing the entire app to white-screen after login.\nAdded null checks and try-catch to make this a non-blocking operation.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
