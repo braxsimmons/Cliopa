@@ -36,9 +36,12 @@ export const TimeTracker = () => {
   const [team, setTeam] = useState<string>("");
   const [shift_type, setShiftType] = useState<string>("regular");
 
-  if (team === "" && profileLoading === false && profile) {
-    setTeam(profile.team);
-  }
+  // Set team from profile when loaded (must be in useEffect, not during render)
+  useEffect(() => {
+    if (team === "" && !profileLoading && profile?.team) {
+      setTeam(profile.team);
+    }
+  }, [profile, profileLoading, team]);
 
   useEffect(() => {
     const runAsync = async () => {
