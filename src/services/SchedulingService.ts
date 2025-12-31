@@ -13,6 +13,7 @@ export interface ScheduledShift {
   created_by: string | null;
   created_at: string;
   updated_at?: string;
+  batch_id?: string | null; // For tracking recurring shift batches
   // Joined from profiles
   first_name?: string;
   last_name?: string;
@@ -192,12 +193,16 @@ export const SchedulingService = {
   },
 
   // Bulk create shifts (for recurring schedules)
-  async createBulkShifts(shifts: CreateShiftInput[]): Promise<ScheduledShift[]> {
+  async createBulkShifts(shifts: CreateShiftInput[]): Promise<{ shifts: ScheduledShift[]; batchId: string }> {
     const { data: { user } } = await supabase.auth.getUser();
+
+    // Generate a unique batch_id for this recurring schedule
+    const batchId = crypto.randomUUID();
 
     const shiftsWithCreator = shifts.map(shift => ({
       ...shift,
       created_by: user?.id,
+      batch_id: batchId,
     }));
 
     const { data, error } = await supabase
@@ -217,12 +222,45 @@ export const SchedulingService = {
       throw error;
     }
 
-    return (data || []).map((shift: any) => ({
+    const createdShifts = (data || []).map((shift: any) => ({
       ...shift,
       first_name: shift.profiles?.first_name,
       last_name: shift.profiles?.last_name,
       email: shift.profiles?.email,
     }));
+
+    return { shifts: createdShifts, batchId };
+  },
+
+  // Delete all shifts in a batch (for undoing recurring schedules)
+  async deleteBatch(batchId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from('scheduled_shifts')
+      .delete()
+      .eq('batch_id', batchId)
+      .select('id');
+
+    if (error) {
+      console.error('Error deleting batch:', error);
+      throw error;
+    }
+
+    return data?.length || 0;
+  },
+
+  // Get count of shifts in a batch
+  async getBatchCount(batchId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('scheduled_shifts')
+      .select('*', { count: 'exact', head: true })
+      .eq('batch_id', batchId);
+
+    if (error) {
+      console.error('Error counting batch:', error);
+      throw error;
+    }
+
+    return count || 0;
   },
 
   // Get all employees (for the scheduler dropdown)

@@ -21,6 +21,9 @@ import {
   TimeOffRulesSelectAllPTOColumns,
   TimeOffRulesSelectAllUtoColumns,
 } from "@/services/TimeOffRulesService";
+import { EmployeeTimeEntries } from "./EmployeeTimeEntries";
+import { EmployeeTimeOff } from "./EmployeeTimeOff";
+
 interface EmployeeProfileProps {
   userId: string;
   onBack: () => void;
@@ -319,6 +322,14 @@ export const EmployeeProfile = ({
             onShiftChange={handleShiftChange}
           />
         </div>
+
+        {/* Admin sections - Time Entries and Time Off */}
+        {canManageAllTimeEntries() && (
+          <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <EmployeeTimeEntries userId={userId} />
+            <EmployeeTimeOff userId={userId} />
+          </div>
+        )}
       </main>
     </div>
   );

@@ -9,10 +9,14 @@ import {
   addMonths,
   subMonths,
   addWeeks,
+  subWeeks,
   isSameMonth,
   isSameDay,
   parseISO,
   getDay,
+  getHours,
+  setHours,
+  eachHourOfInterval,
 } from 'date-fns';
 import {
   ChevronLeft,
@@ -26,6 +30,12 @@ import {
   FileSpreadsheet,
   AlertCircle,
   CheckCircle2,
+  Sun,
+  Umbrella,
+  Users,
+  BarChart3,
+  CalendarDays,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,7 +63,24 @@ import { Switch } from '@/components/ui/switch';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useToast } from '@/hooks/use-toast';
 import { SchedulingService, ScheduledShift, CreateShiftInput } from '@/services/SchedulingService';
+import { ApprovedTimeOffSelectForRange } from '@/services/ApprovedTimeOffService';
 import { cn } from '@/lib/utils';
+
+type ViewMode = 'shifts' | 'timeoff' | 'both';
+type CalendarMode = 'month' | 'week';
+type WeekViewType = 'resource' | 'coverage';
+
+// Time slots for coverage view (6am to 10pm)
+const COVERAGE_HOURS = Array.from({ length: 17 }, (_, i) => i + 6); // 6, 7, 8, ... 22
+
+interface TimeOffEntry {
+  id: string;
+  user_id: string;
+  start_date: string;
+  end_date: string;
+  days_taken: number;
+  request_type: 'PTO' | 'UTO';
+}
 
 interface Employee {
   id: string;
@@ -112,7 +139,12 @@ export const ShiftScheduler = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [shifts, setShifts] = useState<ScheduledShift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [timeOffEntries, setTimeOffEntries] = useState<TimeOffEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('both');
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
+  const [weekViewType, setWeekViewType] = useState<WeekViewType>('resource');
+  const [currentWeek, setCurrentWeek] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedShift, setSelectedShift] = useState<ScheduledShift | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -135,25 +167,39 @@ export const ShiftScheduler = () => {
   const [saving, setSaving] = useState(false);
   const [csvShifts, setCsvShifts] = useState<CSVShift[]>([]);
   const [importLoading, setImportLoading] = useState(false);
+  const [lastBatchId, setLastBatchId] = useState<string | null>(null);
+  const [showUndoToast, setShowUndoToast] = useState(false);
 
   // Fetch shifts and employees
   useEffect(() => {
     fetchData();
-  }, [currentMonth]);
+  }, [currentMonth, currentWeek, calendarMode]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const monthStart = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
-      const monthEnd = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+      let rangeStart: string;
+      let rangeEnd: string;
 
-      const [shiftsData, employeesData] = await Promise.all([
-        SchedulingService.getShiftsForRange(monthStart, monthEnd),
+      if (calendarMode === 'week') {
+        const weekStart = startOfWeek(currentWeek, { weekStartsOn: 0 });
+        const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 0 });
+        rangeStart = format(weekStart, 'yyyy-MM-dd');
+        rangeEnd = format(weekEnd, 'yyyy-MM-dd');
+      } else {
+        rangeStart = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
+        rangeEnd = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+      }
+
+      const [shiftsData, employeesData, timeOffData] = await Promise.all([
+        SchedulingService.getShiftsForRange(rangeStart, rangeEnd),
         SchedulingService.getEmployees(),
+        ApprovedTimeOffSelectForRange(rangeStart, rangeEnd),
       ]);
 
       setShifts(shiftsData);
       setEmployees(employeesData);
+      setTimeOffEntries(timeOffData.data || []);
     } catch (error) {
       toast({
         title: 'Error',
@@ -178,7 +224,36 @@ export const ShiftScheduler = () => {
     return grouped;
   }, [shifts]);
 
-  // Calendar generation
+  // Group time off by date (expand date ranges)
+  const timeOffByDate = useMemo(() => {
+    const grouped: Record<string, TimeOffEntry[]> = {};
+    timeOffEntries.forEach((entry) => {
+      const startDate = parseISO(entry.start_date);
+      const endDate = parseISO(entry.end_date);
+      let currentDate = startDate;
+
+      while (currentDate <= endDate) {
+        const dateKey = format(currentDate, 'yyyy-MM-dd');
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = [];
+        }
+        grouped[dateKey].push(entry);
+        currentDate = addDays(currentDate, 1);
+      }
+    });
+    return grouped;
+  }, [timeOffEntries]);
+
+  // Get employee name from time off entry
+  const getEmployeeNameById = (userId: string) => {
+    const emp = employees.find(e => e.id === userId);
+    if (emp) {
+      return `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.email;
+    }
+    return 'Unknown';
+  };
+
+  // Calendar generation for month view
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
@@ -194,8 +269,55 @@ export const ShiftScheduler = () => {
     return days;
   }, [currentMonth]);
 
+  // Week days for week view
+  const weekDays = useMemo(() => {
+    const weekStart = startOfWeek(currentWeek, { weekStartsOn: 0 });
+    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  }, [currentWeek]);
+
+  // Calculate coverage for each hour/day slot (for coverage view)
+  const coverageData = useMemo(() => {
+    const coverage: Record<string, Record<number, number>> = {};
+
+    weekDays.forEach((day) => {
+      const dateKey = format(day, 'yyyy-MM-dd');
+      coverage[dateKey] = {};
+      COVERAGE_HOURS.forEach((hour) => {
+        coverage[dateKey][hour] = 0;
+      });
+    });
+
+    shifts.forEach((shift) => {
+      if (shift.status === 'cancelled') return;
+
+      const startHour = parseInt(shift.start_time.split(':')[0]);
+      const endHour = parseInt(shift.end_time.split(':')[0]);
+      const dateKey = shift.scheduled_date;
+
+      if (coverage[dateKey]) {
+        for (let hour = startHour; hour < endHour && hour <= 22; hour++) {
+          if (hour >= 6) {
+            coverage[dateKey][hour] = (coverage[dateKey][hour] || 0) + 1;
+          }
+        }
+      }
+    });
+
+    return coverage;
+  }, [shifts, weekDays]);
+
+  // Get coverage color based on count
+  const getCoverageColor = (count: number) => {
+    if (count === 0) return 'bg-gray-100 dark:bg-gray-800';
+    if (count < 3) return 'bg-red-200 text-red-800';
+    if (count < 5) return 'bg-yellow-200 text-yellow-800';
+    return 'bg-green-200 text-green-800';
+  };
+
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const handlePrevWeek = () => setCurrentWeek(subWeeks(currentWeek, 1));
+  const handleNextWeek = () => setCurrentWeek(addWeeks(currentWeek, 1));
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
@@ -252,7 +374,15 @@ export const ShiftScheduler = () => {
         }
 
         if (shiftsToCreate.length > 0) {
-          await SchedulingService.createBulkShifts(shiftsToCreate);
+          const { batchId } = await SchedulingService.createBulkShifts(shiftsToCreate);
+          setLastBatchId(batchId);
+          setShowUndoToast(true);
+
+          // Auto-hide undo toast after 10 seconds
+          setTimeout(() => {
+            setShowUndoToast(false);
+          }, 10000);
+
           toast({
             title: 'Success',
             description: `${shiftsToCreate.length} recurring shifts scheduled`,
@@ -274,6 +404,52 @@ export const ShiftScheduler = () => {
       toast({
         title: 'Error',
         description: 'Failed to create shift(s)',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Undo batch creation
+  const handleUndoBatch = async () => {
+    if (!lastBatchId) return;
+
+    try {
+      const deletedCount = await SchedulingService.deleteBatch(lastBatchId);
+      toast({
+        title: 'Undone',
+        description: `${deletedCount} recurring shifts deleted`,
+      });
+      setShowUndoToast(false);
+      setLastBatchId(null);
+      fetchData();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to undo shift creation',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Delete all shifts in a batch (series)
+  const handleDeleteSeries = async () => {
+    if (!selectedShift?.batch_id) return;
+
+    setSaving(true);
+    try {
+      const deletedCount = await SchedulingService.deleteBatch(selectedShift.batch_id);
+      toast({
+        title: 'Success',
+        description: `${deletedCount} shifts in series deleted`,
+      });
+      setIsViewDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete shift series',
         variant: 'destructive',
       });
     } finally {
@@ -529,106 +705,439 @@ export const ShiftScheduler = () => {
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
           </Button>
+          {/* Month/Week Toggle */}
+          <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+            <button
+              onClick={() => setCalendarMode('month')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium transition-colors',
+                calendarMode === 'month'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+              )}
+            >
+              <Calendar className="h-4 w-4 inline mr-1" />
+              Month
+            </button>
+            <button
+              onClick={() => setCalendarMode('week')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium transition-colors border-l border-[var(--color-border)]',
+                calendarMode === 'week'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+              )}
+            >
+              <CalendarDays className="h-4 w-4 inline mr-1" />
+              Week
+            </button>
+          </div>
+          {/* Navigation */}
           <div className="flex items-center">
-            <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+            <Button variant="outline" size="icon" onClick={calendarMode === 'month' ? handlePrevMonth : handlePrevWeek}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-lg font-semibold text-[var(--color-text)] min-w-[180px] text-center">
-              {format(currentMonth, 'MMMM yyyy')}
+              {calendarMode === 'month'
+                ? format(currentMonth, 'MMMM yyyy')
+                : `${format(weekDays[0], 'MMM d')} - ${format(weekDays[6], 'MMM d, yyyy')}`}
             </span>
-            <Button variant="outline" size="icon" onClick={handleNextMonth}>
+            <Button variant="outline" size="icon" onClick={calendarMode === 'month' ? handleNextMonth : handleNextWeek}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </div>
 
+      {/* Week View Type Toggle (only in week mode) */}
+      {calendarMode === 'week' && (
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-[var(--color-subtext)]">View:</span>
+          <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+            <button
+              onClick={() => setWeekViewType('resource')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1',
+                weekViewType === 'resource'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+              )}
+            >
+              <Users className="h-4 w-4" />
+              Resource
+            </button>
+            <button
+              onClick={() => setWeekViewType('coverage')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium transition-colors border-l border-[var(--color-border)] flex items-center gap-1',
+                weekViewType === 'coverage'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+              )}
+            >
+              <BarChart3 className="h-4 w-4" />
+              Coverage
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* View Toggle (Shifts/Time Off/Both) */}
+      <div className="flex items-center gap-4">
+        <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+          <button
+            onClick={() => setViewMode('shifts')}
+            className={cn(
+              'px-4 py-2 text-sm font-medium transition-colors',
+              viewMode === 'shifts'
+                ? 'bg-[var(--color-accent)] text-white'
+                : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+            )}
+          >
+            <Clock className="h-4 w-4 inline mr-1" />
+            Shifts
+          </button>
+          <button
+            onClick={() => setViewMode('timeoff')}
+            className={cn(
+              'px-4 py-2 text-sm font-medium transition-colors border-l border-r border-[var(--color-border)]',
+              viewMode === 'timeoff'
+                ? 'bg-[var(--color-accent)] text-white'
+                : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+            )}
+          >
+            <Sun className="h-4 w-4 inline mr-1" />
+            Time Off
+          </button>
+          <button
+            onClick={() => setViewMode('both')}
+            className={cn(
+              'px-4 py-2 text-sm font-medium transition-colors',
+              viewMode === 'both'
+                ? 'bg-[var(--color-accent)] text-white'
+                : 'bg-[var(--color-bg)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+            )}
+          >
+            Both
+          </button>
+        </div>
+      </div>
+
       {/* Legend */}
       <div className="flex flex-wrap gap-4">
-        {Object.entries(STATUS_COLORS).map(([status, color]) => (
+        {(viewMode === 'shifts' || viewMode === 'both') && Object.entries(STATUS_COLORS).map(([status, color]) => (
           <div key={status} className="flex items-center gap-2">
             <div className={cn('w-3 h-3 rounded-full', color)} />
             <span className="text-sm text-[var(--color-subtext)] capitalize">{status.replace('_', ' ')}</span>
           </div>
         ))}
+        {(viewMode === 'timeoff' || viewMode === 'both') && (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-purple-500" />
+              <span className="text-sm text-[var(--color-subtext)]">PTO</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-orange-500" />
+              <span className="text-sm text-[var(--color-subtext)]">UTO</span>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Calendar Grid */}
-      <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
-        <CardContent className="p-4">
-          {/* Day headers */}
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-              <div
-                key={day}
-                className="text-center text-sm font-medium text-[var(--color-subtext)] py-2"
-              >
-                {day}
-              </div>
-            ))}
+      {/* Undo Banner for Recurring Shifts */}
+      {showUndoToast && lastBatchId && (
+        <div className="bg-blue-500 text-white px-4 py-3 rounded-lg flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Undo2 className="h-5 w-5" />
+            <span className="font-medium">Recurring shifts created</span>
           </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleUndoBatch}
+            className="bg-white text-blue-500 hover:bg-blue-50"
+          >
+            Undo
+          </Button>
+        </div>
+      )}
 
-          {/* Calendar days */}
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day, idx) => {
-              const dateKey = format(day, 'yyyy-MM-dd');
-              const dayShifts = shiftsByDate[dateKey] || [];
-              const isCurrentMonth = isSameMonth(day, currentMonth);
-              const isToday = isSameDay(day, new Date());
-
-              return (
+      {/* Month View - Calendar Grid */}
+      {calendarMode === 'month' && (
+        <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
+          <CardContent className="p-4">
+            {/* Day headers */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                 <div
-                  key={idx}
-                  onClick={() => handleDateClick(day)}
-                  className={cn(
-                    'min-h-[120px] p-2 border rounded-lg cursor-pointer transition-colors',
-                    isCurrentMonth
-                      ? 'bg-[var(--color-bg)] border-[var(--color-border)] hover:border-[var(--color-accent)]'
-                      : 'bg-[var(--color-surface)] border-transparent opacity-50',
-                    isToday && 'ring-2 ring-[var(--color-accent)]'
-                  )}
+                  key={day}
+                  className="text-center text-sm font-medium text-[var(--color-subtext)] py-2"
                 >
-                  <div className="flex justify-between items-start mb-1">
-                    <span
-                      className={cn(
-                        'text-sm font-medium',
-                        isCurrentMonth ? 'text-[var(--color-text)]' : 'text-[var(--color-subtext)]',
-                        isToday && 'text-[var(--color-accent)]'
-                      )}
-                    >
-                      {format(day, 'd')}
-                    </span>
-                    {dayShifts.length > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {dayShifts.length}
-                      </Badge>
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar days */}
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((day, idx) => {
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const dayShifts = shiftsByDate[dateKey] || [];
+                const dayTimeOff = timeOffByDate[dateKey] || [];
+                const isCurrentMonth = isSameMonth(day, currentMonth);
+                const isToday = isSameDay(day, new Date());
+
+                // Filter based on view mode
+                const showShifts = viewMode === 'shifts' || viewMode === 'both';
+                const showTimeOff = viewMode === 'timeoff' || viewMode === 'both';
+
+                // Calculate max items to show
+                const totalItems = (showShifts ? dayShifts.length : 0) + (showTimeOff ? dayTimeOff.length : 0);
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => handleDateClick(day)}
+                    className={cn(
+                      'min-h-[120px] p-2 border rounded-lg cursor-pointer transition-colors',
+                      isCurrentMonth
+                        ? 'bg-[var(--color-bg)] border-[var(--color-border)] hover:border-[var(--color-accent)]'
+                        : 'bg-[var(--color-surface)] border-transparent opacity-50',
+                      isToday && 'ring-2 ring-[var(--color-accent)]'
                     )}
-                  </div>
-                  <div className="space-y-1">
-                    {dayShifts.slice(0, 3).map((shift) => (
-                      <div
-                        key={shift.id}
-                        onClick={(e) => handleShiftClick(shift, e)}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span
                         className={cn(
-                          'text-xs p-1 rounded truncate text-white',
-                          STATUS_COLORS[shift.status]
+                          'text-sm font-medium',
+                          isCurrentMonth ? 'text-[var(--color-text)]' : 'text-[var(--color-subtext)]',
+                          isToday && 'text-[var(--color-accent)]'
                         )}
                       >
-                        {getEmployeeName(shift)}
-                      </div>
-                    ))}
-                    {dayShifts.length > 3 && (
-                      <div className="text-xs text-[var(--color-subtext)]">
-                        +{dayShifts.length - 3} more
-                      </div>
-                    )}
+                        {format(day, 'd')}
+                      </span>
+                      {totalItems > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {totalItems}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      {/* Time Off entries (shown first) */}
+                      {showTimeOff && dayTimeOff.slice(0, 2).map((timeOff, tIdx) => (
+                        <div
+                          key={`to-${timeOff.id}-${tIdx}`}
+                          className={cn(
+                            'text-xs p-1 rounded truncate text-white flex items-center gap-1',
+                            timeOff.request_type === 'PTO' ? 'bg-purple-500' : 'bg-orange-500'
+                          )}
+                        >
+                          {timeOff.request_type === 'PTO' ? (
+                            <Sun className="h-3 w-3 flex-shrink-0" />
+                          ) : (
+                            <Umbrella className="h-3 w-3 flex-shrink-0" />
+                          )}
+                          <span className="truncate">{getEmployeeNameById(timeOff.user_id)}</span>
+                        </div>
+                      ))}
+                      {/* Shift entries */}
+                      {showShifts && dayShifts.slice(0, showTimeOff && dayTimeOff.length > 0 ? 1 : 3).map((shift) => (
+                        <div
+                          key={shift.id}
+                          onClick={(e) => handleShiftClick(shift, e)}
+                          className={cn(
+                            'text-xs p-1 rounded truncate text-white',
+                            STATUS_COLORS[shift.status]
+                          )}
+                        >
+                          {getEmployeeName(shift)}
+                        </div>
+                      ))}
+                      {totalItems > 3 && (
+                        <div className="text-xs text-[var(--color-subtext)]">
+                          +{totalItems - 3} more
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Week View - Resource View */}
+      {calendarMode === 'week' && weekViewType === 'resource' && (
+        <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
+          <CardContent className="p-4">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left p-2 border-b border-[var(--color-border)] text-[var(--color-text)] min-w-[150px]">
+                      Employee
+                    </th>
+                    {weekDays.map((day) => (
+                      <th
+                        key={format(day, 'yyyy-MM-dd')}
+                        className={cn(
+                          'text-center p-2 border-b border-[var(--color-border)] text-[var(--color-text)] min-w-[120px]',
+                          isSameDay(day, new Date()) && 'bg-[var(--color-accent)]/10'
+                        )}
+                      >
+                        <div className="text-sm font-medium">{format(day, 'EEE')}</div>
+                        <div className={cn(
+                          'text-xs',
+                          isSameDay(day, new Date()) ? 'text-[var(--color-accent)]' : 'text-[var(--color-subtext)]'
+                        )}>
+                          {format(day, 'MMM d')}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map((emp) => (
+                    <tr key={emp.id} className="border-b border-[var(--color-border)]">
+                      <td className="p-2 text-[var(--color-text)]">
+                        <div className="font-medium text-sm">
+                          {emp.first_name || emp.last_name
+                            ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim()
+                            : emp.email}
+                        </div>
+                        {emp.team && (
+                          <div className="text-xs text-[var(--color-subtext)]">{emp.team}</div>
+                        )}
+                      </td>
+                      {weekDays.map((day) => {
+                        const dateKey = format(day, 'yyyy-MM-dd');
+                        const empShifts = (shiftsByDate[dateKey] || []).filter(s => s.user_id === emp.id);
+                        const empTimeOff = (timeOffByDate[dateKey] || []).filter(t => t.user_id === emp.id);
+
+                        return (
+                          <td
+                            key={dateKey}
+                            onClick={() => handleDateClick(day)}
+                            className={cn(
+                              'p-1 text-center cursor-pointer hover:bg-[var(--color-bg)] transition-colors',
+                              isSameDay(day, new Date()) && 'bg-[var(--color-accent)]/5'
+                            )}
+                          >
+                            <div className="space-y-1">
+                              {empTimeOff.map((to, idx) => (
+                                <div
+                                  key={`to-${to.id}-${idx}`}
+                                  className={cn(
+                                    'text-xs p-1 rounded text-white',
+                                    to.request_type === 'PTO' ? 'bg-purple-500' : 'bg-orange-500'
+                                  )}
+                                >
+                                  {to.request_type}
+                                </div>
+                              ))}
+                              {empShifts.map((shift) => (
+                                <div
+                                  key={shift.id}
+                                  onClick={(e) => handleShiftClick(shift, e)}
+                                  className={cn(
+                                    'text-xs p-1 rounded text-white',
+                                    STATUS_COLORS[shift.status]
+                                  )}
+                                >
+                                  {shift.start_time.slice(0, 5)}-{shift.end_time.slice(0, 5)}
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Week View - Coverage View */}
+      {calendarMode === 'week' && weekViewType === 'coverage' && (
+        <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
+          <CardContent className="p-4">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left p-2 border-b border-[var(--color-border)] text-[var(--color-text)] min-w-[60px]">
+                      Hour
+                    </th>
+                    {weekDays.map((day) => (
+                      <th
+                        key={format(day, 'yyyy-MM-dd')}
+                        className={cn(
+                          'text-center p-2 border-b border-[var(--color-border)] text-[var(--color-text)] min-w-[80px]',
+                          isSameDay(day, new Date()) && 'bg-[var(--color-accent)]/10'
+                        )}
+                      >
+                        <div className="text-sm font-medium">{format(day, 'EEE')}</div>
+                        <div className={cn(
+                          'text-xs',
+                          isSameDay(day, new Date()) ? 'text-[var(--color-accent)]' : 'text-[var(--color-subtext)]'
+                        )}>
+                          {format(day, 'MMM d')}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {COVERAGE_HOURS.map((hour) => (
+                    <tr key={hour} className="border-b border-[var(--color-border)]">
+                      <td className="p-2 text-sm text-[var(--color-text)]">
+                        {hour > 12 ? `${hour - 12}pm` : hour === 12 ? '12pm' : `${hour}am`}
+                      </td>
+                      {weekDays.map((day) => {
+                        const dateKey = format(day, 'yyyy-MM-dd');
+                        const count = coverageData[dateKey]?.[hour] || 0;
+
+                        return (
+                          <td
+                            key={`${dateKey}-${hour}`}
+                            className={cn(
+                              'p-2 text-center text-sm font-medium',
+                              getCoverageColor(count)
+                            )}
+                          >
+                            {count}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Coverage Legend */}
+            <div className="flex items-center gap-4 mt-4 text-sm">
+              <span className="text-[var(--color-subtext)]">Coverage:</span>
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-red-200 rounded" />
+                <span className="text-[var(--color-subtext)]">Low (&lt;3)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-yellow-200 rounded" />
+                <span className="text-[var(--color-subtext)]">Medium (3-4)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-4 h-4 bg-green-200 rounded" />
+                <span className="text-[var(--color-subtext)]">Good (5+)</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add Shift Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -852,6 +1361,14 @@ export const ShiftScheduler = () => {
                 </div>
               )}
 
+              {/* Recurring Shift Indicator */}
+              {selectedShift.batch_id && (
+                <div className="flex items-center gap-2 text-[var(--color-subtext)] text-sm">
+                  <Repeat className="h-4 w-4" />
+                  <span>Part of a recurring schedule</span>
+                </div>
+              )}
+
               {selectedShift.status === 'scheduled' && (
                 <div className="flex flex-wrap gap-2 pt-4 border-t border-[var(--color-border)]">
                   <Button
@@ -884,7 +1401,19 @@ export const ShiftScheduler = () => {
               )}
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="flex gap-2">
+            {selectedShift?.batch_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDeleteSeries}
+                disabled={saving}
+                className="border-orange-500 text-orange-500 hover:bg-orange-50"
+              >
+                <Repeat className="h-4 w-4 mr-2" />
+                Delete Series
+              </Button>
+            )}
             <Button
               variant="destructive"
               size="sm"
@@ -892,7 +1421,7 @@ export const ShiftScheduler = () => {
               disabled={saving}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+              Delete This Shift
             </Button>
           </DialogFooter>
         </DialogContent>

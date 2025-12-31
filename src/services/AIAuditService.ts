@@ -9,6 +9,114 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { getDefaultTemplate } from './AuditTemplatesService';
+
+// ============================================================================
+// CACHING FUNCTIONS - Prevent duplicate AI calls
+// ============================================================================
+
+/**
+ * Hash transcript using SHA-256 for cache key
+ */
+async function hashTranscript(transcript: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(transcript.trim().toLowerCase());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Check if we have a cached audit result for this transcript
+ */
+async function getCachedAudit(transcriptHash: string): Promise<AIAuditResult | null> {
+  try {
+    const { data, error } = await supabase
+      .from('audit_cache')
+      .select('audit_result, ai_provider, ai_model')
+      .eq('transcript_hash', transcriptHash)
+      .single();
+
+    if (error || !data) return null;
+
+    console.log('Cache HIT for transcript hash:', transcriptHash.substring(0, 16) + '...');
+
+    // Update hit count and last accessed timestamp
+    supabase
+      .from('audit_cache')
+      .update({
+        hit_count: (data as any).hit_count ? (data as any).hit_count + 1 : 2,
+        last_accessed_at: new Date().toISOString()
+      })
+      .eq('transcript_hash', transcriptHash)
+      .then(() => {});
+
+    return data.audit_result as AIAuditResult;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Store audit result in cache
+ */
+async function setCachedAudit(
+  transcriptHash: string,
+  result: AIAuditResult,
+  aiProvider: string,
+  aiModel: string
+): Promise<void> {
+  try {
+    await supabase
+      .from('audit_cache')
+      .upsert({
+        transcript_hash: transcriptHash,
+        audit_result: result,
+        ai_provider: aiProvider,
+        ai_model: aiModel,
+        hit_count: 1,
+        last_accessed_at: new Date().toISOString()
+      }, { onConflict: 'transcript_hash' });
+    console.log('Cached audit result for hash:', transcriptHash.substring(0, 16) + '...');
+  } catch (e) {
+    console.warn('Failed to cache audit result:', e);
+  }
+}
+
+// ============================================================================
+// AUDIT CRITERIA LOADING
+// ============================================================================
+
+/**
+ * Fetch audit criteria from database template
+ */
+export async function getAuditCriteria(): Promise<any[]> {
+  const { template, error } = await getDefaultTemplate();
+  if (error || !template) {
+    console.warn('Failed to load audit template from database, using fallback');
+    return getDefaultCriteria();
+  }
+  return template.criteria;
+}
+
+/**
+ * Fallback criteria if database is unavailable
+ */
+function getDefaultCriteria(): any[] {
+  return [
+    { id: "QQ", name: "Qualifying Questions", description: "Verify QQs were asked and documented", dimension: "compliance", weight: 1.0 },
+    { id: "VCI", name: "Customer Information Verification", description: "Properly verified customer identity", dimension: "compliance", weight: 1.0 },
+    { id: "WHY_SMILE", name: "Sincerity & Tone", description: "Demonstrated friendliness and positive tone", dimension: "tone", weight: 1.0 },
+    { id: "WHAT_EMPATHY", name: "Empathy & Care", description: "Demonstrated empathy and care", dimension: "empathy", weight: 1.0 },
+    { id: "WHERE_RESOLUTION", name: "Fair Resolution", description: "Worked toward fair resolution", dimension: "resolution", weight: 1.0 },
+    { id: "WHAT_LISTEN_EXPLORE", name: "Active Listening", description: "Actively listened and explored solutions", dimension: "communication", weight: 1.0 },
+    { id: "NOTES", name: "Proper Documentation", description: "Documented interaction in file notes", dimension: "accuracy", weight: 1.0 },
+  ];
+}
+
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
 
 // Call Types that the AI will detect and handle differently
 export type CallType =
@@ -1018,6 +1126,7 @@ export async function pullOllamaModel(
 /**
  * Main entry point for performing audits
  * This is a convenience wrapper around auditCallWithTypeDetection
+ * Now includes caching to prevent duplicate AI calls
  */
 export async function performAudit(
   transcript: string,
@@ -1027,8 +1136,26 @@ export async function performAudit(
     callDurationSeconds?: number;
     campaignName?: string;
     callType?: string;
+    skipCache?: boolean;
   } = {}
-): Promise<AIAuditResult & { explanation?: string }> {
+): Promise<AIAuditResult & { explanation?: string; fromCache?: boolean }> {
+  // Check cache first (unless explicitly skipped)
+  if (!options.skipCache) {
+    try {
+      const transcriptHash = await hashTranscript(transcript);
+      const cachedResult = await getCachedAudit(transcriptHash);
+      if (cachedResult) {
+        return {
+          ...cachedResult,
+          fromCache: true,
+          explanation: cachedResult.scorable ? undefined : cachedResult.scoring_notes,
+        };
+      }
+    } catch (e) {
+      console.warn('Cache lookup failed, proceeding with AI call:', e);
+    }
+  }
+
   // Estimate duration from transcript if not provided
   const wordCount = transcript.split(/\s+/).length;
   const estimatedDuration = options.callDurationSeconds || Math.ceil(wordCount / 2.5); // ~150 words per minute
@@ -1043,15 +1170,57 @@ export async function performAudit(
     }
   );
 
+  // Cache the result for future use
+  if (!options.skipCache) {
+    try {
+      const transcriptHash = await hashTranscript(transcript);
+      await setCachedAudit(transcriptHash, result, aiProvider.name, aiProvider.model);
+    } catch (e) {
+      console.warn('Failed to cache audit result:', e);
+    }
+  }
+
   // Add explanation for non-scorable calls
   if (!result.scorable) {
     return {
       ...result,
+      fromCache: false,
       explanation: result.scoring_notes,
     };
   }
 
-  return result;
+  return { ...result, fromCache: false };
+}
+
+/**
+ * Simplified audit function for the UI
+ * Automatically loads criteria from database and handles provider selection
+ */
+export async function runAudit(
+  transcript: string,
+  options: {
+    geminiApiKey?: string;
+    ollamaHost?: string;
+    preferredProvider?: 'gemini' | 'ollama' | 'lmstudio';
+    skipCache?: boolean;
+  } = {}
+): Promise<AIAuditResult & { explanation?: string; fromCache?: boolean }> {
+  // Load criteria from database
+  const criteria = await getAuditCriteria();
+
+  // Determine AI provider
+  let aiProvider: AIProvider;
+
+  if (options.preferredProvider === 'gemini' && options.geminiApiKey) {
+    aiProvider = getGeminiProvider(options.geminiApiKey);
+  } else if (options.preferredProvider === 'ollama') {
+    aiProvider = getOllamaProvider(options.ollamaHost || 'http://localhost:11434');
+  } else {
+    // Default to LM Studio
+    aiProvider = getDefaultAIProvider();
+  }
+
+  return performAudit(transcript, aiProvider, criteria, { skipCache: options.skipCache });
 }
 
 // Recommended models by use case

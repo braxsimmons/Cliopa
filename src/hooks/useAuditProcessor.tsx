@@ -1,29 +1,78 @@
 import { useState, useEffect } from "react";
 import { ReportCardsInsert } from "@/services/ReportCardsService";
 import { useToast } from "@/hooks/use-toast";
-import { lmStudioClient, type AuditResult } from "@/lib/lmStudioClient";
+import {
+  runAudit,
+  checkProviderAvailability,
+  getDefaultAIProvider,
+  getGeminiProvider,
+  getOllamaProvider,
+  testGeminiConnection,
+  type AIAuditResult,
+  type CriterionResult,
+} from "@/services/AIAuditService";
 
-interface AuditCriterion {
-  id: string;
-  result: "PASS" | "PARTIAL" | "FAIL";
-  explanation: string;
-  recommendation: string;
+// Extended result type that includes legacy fields for UI compatibility
+interface AuditResult {
+  overall_score: number;
+  summary: string;
+  criteria: CriterionResult[];
+  communication_score?: number;
+  compliance_score?: number;
+  accuracy_score?: number;
+  tone_score?: number;
+  empathy_score?: number;
+  resolution_score?: number;
+  recommendations?: string[];
+  fromCache?: boolean;
 }
+
+type AIProviderType = 'lmstudio' | 'gemini' | 'ollama';
 
 export const useAuditProcessor = () => {
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
-  const [useLocalLLM, setUseLocalLLM] = useState(true); // Default to LM Studio
-  const [lmStudioAvailable, setLmStudioAvailable] = useState<boolean | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<AIProviderType>('lmstudio');
+  const [providerStatus, setProviderStatus] = useState<Record<AIProviderType, boolean | null>>({
+    lmstudio: null,
+    gemini: null,
+    ollama: null,
+  });
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
   const { toast } = useToast();
 
-  const checkLMStudioAvailability = async () => {
-    const available = await lmStudioClient.checkAvailability();
-    setLmStudioAvailable(available);
+  // Legacy compatibility
+  const useLocalLLM = selectedProvider === 'lmstudio';
+  const setUseLocalLLM = (value: boolean) => {
+    setSelectedProvider(value ? 'lmstudio' : 'gemini');
+  };
+  const lmStudioAvailable = providerStatus.lmstudio;
+
+  const checkProviderStatus = async (provider: AIProviderType): Promise<boolean> => {
+    try {
+      let available = false;
+      if (provider === 'lmstudio') {
+        available = await checkProviderAvailability(getDefaultAIProvider());
+      } else if (provider === 'gemini' && geminiApiKey) {
+        const result = await testGeminiConnection(geminiApiKey);
+        available = result.success;
+      } else if (provider === 'ollama') {
+        available = await checkProviderAvailability(getOllamaProvider());
+      }
+      setProviderStatus(prev => ({ ...prev, [provider]: available }));
+      return available;
+    } catch {
+      setProviderStatus(prev => ({ ...prev, [provider]: false }));
+      return false;
+    }
+  };
+
+  const checkLMStudioAvailability = async (): Promise<boolean> => {
+    const available = await checkProviderStatus('lmstudio');
     if (!available) {
       toast({
         title: "LM Studio Not Available",
-        description: "Falling back to OpenAI. Start LM Studio on port 1234 for local processing.",
+        description: "Start LM Studio on port 1234 for local processing, or configure Gemini API.",
         variant: "default",
       });
     }
@@ -32,8 +81,15 @@ export const useAuditProcessor = () => {
 
   // Check LM Studio availability on mount
   useEffect(() => {
-    checkLMStudioAvailability();
+    checkProviderStatus('lmstudio');
   }, []);
+
+  // Check Gemini when API key changes
+  useEffect(() => {
+    if (geminiApiKey) {
+      checkProviderStatus('gemini');
+    }
+  }, [geminiApiKey]);
 
   const processAudit = async (
     transcriptText: string,
@@ -46,43 +102,57 @@ export const useAuditProcessor = () => {
     const startTime = Date.now();
 
     try {
-      let auditResult: AuditResult;
-      let aiProvider: string;
-      let aiModel: string;
+      // Determine which provider to use
+      let effectiveProvider: AIProviderType = selectedProvider;
 
-      // Try LM Studio first if enabled
-      if (useLocalLLM) {
-        const isAvailable = await checkLMStudioAvailability();
-
-        if (isAvailable) {
-          toast({
-            title: "Processing with LM Studio",
-            description: "Using local LLM for real-time audit...",
-          });
-
-          auditResult = (await lmStudioClient.processAudit(transcriptText))!;
-          aiProvider = "lm-studio";
-          aiModel = "local-model";
+      // Check if selected provider is available
+      const isAvailable = await checkProviderStatus(selectedProvider);
+      if (!isAvailable) {
+        // Try fallback providers
+        if (selectedProvider === 'lmstudio') {
+          if (geminiApiKey && await checkProviderStatus('gemini')) {
+            effectiveProvider = 'gemini';
+            toast({
+              title: "Using Gemini",
+              description: "LM Studio unavailable, using Gemini API...",
+            });
+          } else {
+            throw new Error("No AI provider available. Start LM Studio or configure Gemini API key.");
+          }
         } else {
-          // Fallback to OpenAI
-          toast({
-            title: "LM Studio Unavailable",
-            description: "Falling back to OpenAI API...",
-            variant: "default",
-          });
-          auditResult = await processWithOpenAI(transcriptText, sourceFile);
-          aiProvider = "openai";
-          aiModel = "gpt-4o-mini";
+          throw new Error(`${selectedProvider} is not available.`);
         }
-      } else {
-        // Use OpenAI directly
-        auditResult = await processWithOpenAI(transcriptText, sourceFile);
-        aiProvider = "openai";
-        aiModel = "gpt-4o-mini";
       }
 
-      const processingTime = Date.now() - startTime;
-      setResult(auditResult);
+      toast({
+        title: `Processing with ${effectiveProvider === 'lmstudio' ? 'LM Studio' : effectiveProvider === 'gemini' ? 'Gemini' : 'Ollama'}`,
+        description: "Analyzing call transcript...",
+      });
+
+      // Use the new AIAuditService
+      const auditResult = await runAudit(transcriptText, {
+        geminiApiKey: effectiveProvider === 'gemini' ? geminiApiKey : undefined,
+        preferredProvider: effectiveProvider,
+      });
+
+      const processingTime = auditResult.processing_time_ms || (Date.now() - startTime);
+
+      // Convert to legacy format for UI compatibility
+      const legacyResult: AuditResult = {
+        overall_score: auditResult.overall_score,
+        summary: auditResult.feedback,
+        criteria: auditResult.criteria_results,
+        communication_score: auditResult.communication_score,
+        compliance_score: auditResult.compliance_score,
+        accuracy_score: auditResult.accuracy_score,
+        tone_score: auditResult.tone_score,
+        empathy_score: auditResult.empathy_score,
+        resolution_score: auditResult.resolution_score,
+        recommendations: auditResult.recommendations,
+        fromCache: auditResult.fromCache,
+      };
+
+      setResult(legacyResult);
 
       // Save to database
       const { reportCard, error } = await ReportCardsInsert({
@@ -96,13 +166,13 @@ export const useAuditProcessor = () => {
         tone_score: auditResult.tone_score,
         empathy_score: auditResult.empathy_score,
         resolution_score: auditResult.resolution_score,
-        feedback: auditResult.summary,
-        strengths: extractStrengths(auditResult.criteria),
-        areas_for_improvement: extractImprovements(auditResult.criteria),
-        recommendations: extractRecommendations(auditResult.criteria),
-        criteria_results: auditResult.criteria,
-        ai_model: aiModel,
-        ai_provider: aiProvider,
+        feedback: auditResult.feedback,
+        strengths: auditResult.strengths,
+        areas_for_improvement: auditResult.areas_for_improvement,
+        recommendations: auditResult.recommendations,
+        criteria_results: auditResult.criteria_results,
+        ai_model: auditResult.ai_model,
+        ai_provider: auditResult.ai_provider,
         processing_time_ms: processingTime,
       });
 
@@ -114,13 +184,14 @@ export const useAuditProcessor = () => {
           variant: "destructive",
         });
       } else {
+        const cacheNote = auditResult.fromCache ? ' (cached)' : '';
         toast({
-          title: `Audit Complete (${(processingTime / 1000).toFixed(1)}s)`,
-          description: `Overall score: ${auditResult.overall_score}/100 via ${aiProvider}`,
+          title: `Audit Complete${cacheNote} (${(processingTime / 1000).toFixed(1)}s)`,
+          description: `Overall score: ${auditResult.overall_score}/100 via ${auditResult.ai_provider}`,
         });
       }
 
-      return auditResult;
+      return legacyResult;
     } catch (error) {
       console.error("Audit processing error:", error);
       toast({
@@ -134,45 +205,21 @@ export const useAuditProcessor = () => {
     }
   };
 
-  // Fallback: Process with OpenAI
-  const processWithOpenAI = async (
-    transcriptText: string,
-    sourceFile: string
-  ): Promise<AuditResult> => {
-    // This would call your OpenAI API
-    // For now, return mock data or implement OpenAI client
-    throw new Error("OpenAI processing not yet implemented. Please use LM Studio.");
-  };
-
-  const extractStrengths = (criteria: AuditCriterion[]): string[] => {
-    return criteria
-      .filter((c) => c.result === "PASS")
-      .map((c) => c.explanation)
-      .slice(0, 5);
-  };
-
-  const extractImprovements = (criteria: AuditCriterion[]): string[] => {
-    return criteria
-      .filter((c) => c.result === "FAIL" || c.result === "PARTIAL")
-      .map((c) => c.explanation)
-      .slice(0, 5);
-  };
-
-  const extractRecommendations = (criteria: AuditCriterion[]): string[] => {
-    return criteria
-      .filter((c) => c.result === "FAIL" || c.result === "PARTIAL")
-      .map((c) => c.recommendation)
-      .filter((r) => r && r.length > 0)
-      .slice(0, 5);
-  };
-
   return {
     processAudit,
     processing,
     result,
+    // Legacy compatibility
     useLocalLLM,
     setUseLocalLLM,
     lmStudioAvailable,
     checkLMStudioAvailability,
+    // New provider management
+    selectedProvider,
+    setSelectedProvider,
+    providerStatus,
+    checkProviderStatus,
+    geminiApiKey,
+    setGeminiApiKey,
   };
 };

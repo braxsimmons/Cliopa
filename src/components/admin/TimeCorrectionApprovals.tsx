@@ -1,12 +1,14 @@
-import { useState, useEffect } from "react";
-import { ArrowLeft, Clock, User } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { ArrowLeft, Clock, User, AlertTriangle, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { format, parseISO } from "date-fns";
 import { useTimeCorrections } from "@/hooks/useTimeCorrections";
+import { cn } from "@/lib/utils";
 
 interface TimeCorrectionApprovalsProps {
   onBack: () => void;
@@ -20,8 +22,56 @@ export const TimeCorrectionApprovals = ({
   const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>(
     {}
   );
+  const [showUrgentOnly, setShowUrgentOnly] = useState(false);
   const { fetchPendingCorrections, approveCorrection, denyCorrection } =
     useTimeCorrections();
+
+  // Calculate time difference in minutes for a correction
+  const getTimeDeltaMinutes = (correction: any): number => {
+    const currentStartTime = new Date(correction.current_start_time);
+    const currentEndTime = new Date(correction.current_end_time);
+    const requestedStartTime = correction.requested_start_time
+      ? new Date(correction.requested_start_time)
+      : currentStartTime;
+    const requestedEndTime = correction.requested_end_time
+      ? new Date(correction.requested_end_time)
+      : currentEndTime;
+
+    let diff = 0;
+    if (correction.requested_end_time) {
+      diff += Math.abs(requestedEndTime.getTime() - currentEndTime.getTime());
+    }
+    if (correction.requested_start_time) {
+      diff += Math.abs(currentStartTime.getTime() - requestedStartTime.getTime());
+    }
+    return diff / (1000 * 60); // Convert to minutes
+  };
+
+  // Check if a correction is "urgent" (over 60 minutes difference)
+  const isUrgentCorrection = (correction: any): boolean => {
+    return getTimeDeltaMinutes(correction) > 60;
+  };
+
+  // Sort and filter corrections - urgent ones first
+  const sortedCorrections = useMemo(() => {
+    const filtered = showUrgentOnly
+      ? corrections.filter(isUrgentCorrection)
+      : corrections;
+
+    return [...filtered].sort((a, b) => {
+      const aUrgent = isUrgentCorrection(a);
+      const bUrgent = isUrgentCorrection(b);
+      if (aUrgent && !bUrgent) return -1;
+      if (!aUrgent && bUrgent) return 1;
+      // Secondary sort by delta size (larger first)
+      return getTimeDeltaMinutes(b) - getTimeDeltaMinutes(a);
+    });
+  }, [corrections, showUrgentOnly]);
+
+  const urgentCount = useMemo(() =>
+    corrections.filter(isUrgentCorrection).length,
+    [corrections]
+  );
 
   useEffect(() => {
     loadCorrections();
@@ -133,33 +183,67 @@ export const TimeCorrectionApprovals = ({
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Card>
+        <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Pending Time Corrections ({corrections.length})
-            </CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <CardTitle className="flex items-center gap-2 text-[var(--color-text)]">
+                <Clock className="h-5 w-5" />
+                Pending Time Corrections ({corrections.length})
+                {urgentCount > 0 && (
+                  <Badge variant="destructive" className="ml-2 gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {urgentCount} Urgent
+                  </Badge>
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-[var(--color-subtext)]" />
+                <Label htmlFor="urgent-filter" className="text-sm text-[var(--color-subtext)]">
+                  Show urgent only
+                </Label>
+                <Switch
+                  id="urgent-filter"
+                  checked={showUrgentOnly}
+                  onCheckedChange={setShowUrgentOnly}
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            {corrections.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No pending time corrections found
+            {sortedCorrections.length === 0 ? (
+              <div className="text-center py-8 text-[var(--color-subtext)]">
+                {showUrgentOnly && corrections.length > 0
+                  ? "No urgent corrections - all corrections are within 1 hour"
+                  : "No pending time corrections found"}
               </div>
             ) : (
               <div className="space-y-6">
-                {corrections.map((correction) => (
+                {sortedCorrections.map((correction) => {
+                  const isUrgent = isUrgentCorrection(correction);
+                  return (
                   <div
                     key={correction.id}
-                    className="border rounded-lg p-6 space-y-4"
+                    className={cn(
+                      "border rounded-lg p-6 space-y-4 transition-all",
+                      isUrgent
+                        ? "border-red-500 border-2 bg-red-50 dark:bg-red-950/20"
+                        : "border-[var(--color-border)]"
+                    )}
                   >
                     <div className="flex justify-between items-start">
                       <div className="space-y-3 flex-1">
-                        <div className="flex items-center gap-3">
-                          <User className="h-4 w-4 text-gray-500" />
-                          <span className="font-medium">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <User className="h-4 w-4 text-[var(--color-subtext)]" />
+                          <span className="font-medium text-[var(--color-text)]">
                             {getEmployeeName(correction)}
                           </span>
                           <Badge variant="outline">Time Correction</Badge>
+                          {isUrgent && (
+                            <Badge variant="destructive" className="gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              URGENT - Over 1 hour change
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-3 gap-4 text-sm">
@@ -329,7 +413,8 @@ export const TimeCorrectionApprovals = ({
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

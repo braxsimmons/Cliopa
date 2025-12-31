@@ -42,7 +42,9 @@ export const useTimeCorrections = () => {
     requestedEndTime: string,
     reason: string,
     requestedShiftType: string,
-    team: string
+    team: string,
+    originalStartTime?: string | null,
+    originalEndTime?: string | null
   ) => {
     if (!user?.id) return;
 
@@ -80,7 +82,9 @@ export const useTimeCorrections = () => {
           requestedEndTime,
           reason,
           team,
-          requestedShiftType
+          requestedShiftType,
+          originalStartTime,
+          originalEndTime
         ));
       }
       if (error) throw error;

@@ -184,3 +184,62 @@ export const TimeEntriesUpdateVerifyShift = async (id: string) => {
 
   return { data, error };
 };
+
+/**
+ * Fetches time entries for a specific user within a date range
+ * Used by admins to view/manage any user's time entries
+ */
+export const TimeEntriesSelectForUser = async (
+  userId: string,
+  startDate: string,
+  endDate: string
+) => {
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select("id, start_time, end_time, total_hours, status, team, shift_type, verified")
+    .eq("user_id", userId)
+    .gte("start_time", `${startDate}T00:00:00`)
+    .lte("start_time", `${endDate}T23:59:59`)
+    .order("start_time", { ascending: false });
+
+  return { data, error };
+};
+
+/**
+ * Updates a time entry (admin function)
+ */
+export const TimeEntriesUpdate = async (
+  entryId: string,
+  updates: {
+    start_time?: string;
+    end_time?: string;
+    total_hours?: number;
+    team?: string;
+    shift_type?: string;
+    status?: string;
+  }
+) => {
+  const { data, error } = await supabase
+    .from("time_entries")
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", entryId)
+    .select()
+    .single();
+
+  return { data, error };
+};
+
+/**
+ * Deletes a time entry (admin function)
+ */
+export const TimeEntriesDelete = async (entryId: string) => {
+  const { error } = await supabase
+    .from("time_entries")
+    .delete()
+    .eq("id", entryId);
+
+  return { error };
+};
