@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useReportCards } from "@/hooks/useReportCards";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,6 +13,8 @@ import { DisputeForm } from "@/components/disputes/DisputeForm";
 import { DisputeManagement } from "@/components/disputes/DisputeManagement";
 import { ReportCardViewer } from "@/components/admin/ReportCardViewer";
 import { supabase } from "@/integrations/supabase/client";
+import { useReportCardsRealtime } from "@/hooks/useRealtimeSubscription";
+import { PerformanceDashboardSkeleton } from "@/components/ui/skeletons";
 
 export const ReportCardDashboard: React.FC = () => {
   const { reportCards, trendData, performanceSummary, loading, error, fetchTrendData, fetchPerformanceSummary, refetch } = useReportCards();
@@ -42,6 +44,22 @@ export const ReportCardDashboard: React.FC = () => {
     fetchDisputeStatuses();
     fetchCallData();
   }, []);
+
+  // Real-time subscription for new report cards
+  const handleRealtimeUpdate = useCallback((payload: any) => {
+    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+      // Refetch data when new report cards come in
+      refetch?.();
+      fetchTrendData();
+      fetchPerformanceSummary();
+      fetchCallData();
+    }
+  }, [refetch, fetchTrendData, fetchPerformanceSummary]);
+
+  useReportCardsRealtime(handleRealtimeUpdate, {
+    showToasts: true,
+    filterByUser: !canManageUsers()
+  });
 
   // Fetch call data for report cards
   const fetchCallData = async () => {
@@ -132,11 +150,7 @@ export const ReportCardDashboard: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin" />
-      </div>
-    );
+    return <PerformanceDashboardSkeleton />;
   }
 
   // Show error state if database tables don't exist

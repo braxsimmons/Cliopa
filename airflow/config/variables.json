@@ -1,0 +1,12 @@
+{
+  "MSSQL_SERVER": "sql03.ad.yattaops.com",
+  "MSSQL_DATABASE": "Yatta",
+  "MSSQL_USERNAME": "bsimmons",
+  "MSSQL_PASSWORD": "YOUR_PASSWORD_HERE",
+  "SUPABASE_URL": "https://zkywapiptgpnfkacpyrz.supabase.co",
+  "SUPABASE_SERVICE_KEY": "YOUR_SERVICE_KEY_HERE",
+  "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY_HERE",
+  "GEMINI_MODEL": "gemini-2.0-flash",
+  "SYNC_LOOKBACK_HOURS": "24",
+  "SYNC_BATCH_SIZE": "50"
+}

@@ -7,6 +7,7 @@ export interface EmployeeData {
   start_date: string | null;
   birthday: string | null;
   team: string | null;
+  sub_team: string | null;
   role: string | null;
   uto_name: string | null;
   max_uto: number | null;
@@ -44,5 +45,16 @@ export const DAYS_OF_WEEK = [
 ];
 
 export const TEAM_OPTIONS = ["bisongreen", "boost", "support staff"];
+
+export const SUB_TEAM_OPTIONS = [
+  "Cascade",
+  "Denali",
+  "DSS/NSS",
+  "Everest",
+  "Fuji",
+  "Kilimanjaro",
+  "K2",
+  "Matterhorn",
+];
 
 export const EMPLOYMENT_TYPE = ["Full-Time", "Part-Time"];

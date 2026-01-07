@@ -66,7 +66,7 @@ export const useShiftScheduling = () => {
         return { canClockIn: false };
       }
 
-      const earliestClockIn = subMinutes(shift.shiftStart, 5);
+      const earliestClockIn = subMinutes(shift.shiftStart, 10);
       if (now < earliestClockIn) {
         return { canClockIn: false, scheduledStart: earliestClockIn };
       } else {

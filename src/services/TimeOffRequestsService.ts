@@ -20,7 +20,7 @@ export const TimeOffRequestsSelectAllColumns = async () => {
           profiles!time_off_requests_user_id_fkey (id, first_name, last_name, email, team)
           `,
         )
-        .order("created_at", { ascending: false });
+        .order("start_date", { ascending: false });
     return { timeOffRequests, requestsError };
 };
 

@@ -46,7 +46,7 @@ export const useAutoEndShift = () => {
         entryStartTime.getMonth(),
         entryStartTime.getDate(),
         afternoonStartHours,
-        afternoonStartMinutes - 5,
+        afternoonStartMinutes - 10,
         0
       );
 

@@ -14,6 +14,7 @@ export const ProfileSelectAllColumns = async () => {
             , role
             , start_date
             , team
+            , sub_team
         `
     )
     .order("created_at", { ascending: false });
@@ -73,6 +74,7 @@ export const ProfileUpdate = async (
       start_date: editForm.start_date,
       birthday: editForm.birthday,
       team: editForm.team,
+      sub_team: editForm.sub_team,
       pto_rule_advance_at: editForm.pto_rule_advance_at,
       employment_type: editForm.employment_type,
     })

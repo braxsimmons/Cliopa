@@ -28,6 +28,7 @@ interface User {
   last_name: string | null;
   hourly_rate: number;
   team: string | null;
+  sub_team: string | null;
   role: "admin" | "manager" | "ccm" | "crm" | null;
 }
 
@@ -56,6 +57,7 @@ export const UserTable = ({
           <TableHead>Name</TableHead>
           <TableHead>Email</TableHead>
           <TableHead>Team</TableHead>
+          <TableHead>Sub Team</TableHead>
           <TableHead>Role</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>
@@ -80,6 +82,13 @@ export const UserTable = ({
                 <Badge variant="outline">{user.team}</Badge>
               ) : (
                 <span className="text-gray-500 text-sm">No team</span>
+              )}
+            </TableCell>
+            <TableCell>
+              {user.sub_team ? (
+                <Badge variant="outline">{user.sub_team}</Badge>
+              ) : (
+                <span className="text-gray-500 text-sm">No sub team</span>
               )}
             </TableCell>
             <TableCell>

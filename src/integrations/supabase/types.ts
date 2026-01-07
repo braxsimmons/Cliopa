@@ -290,13 +290,16 @@ export type Database = {
           birthday: string | null;
           created_at: string;
           email: string;
+          employment_type: string;
           first_name: string | null;
           hourly_rate: number;
           id: string;
           last_name: string | null;
           pto_rule: string | null;
+          pto_rule_advance_at: string | null;
           role: Database["public"]["Enums"]["app_role"];
           start_date: string | null;
+          sub_team: Database["public"]["Enums"]["sub_team"] | null;
           team: string | null;
           updated_at: string;
           uto_rule: string | null;
@@ -305,13 +308,16 @@ export type Database = {
           birthday?: string | null;
           created_at?: string;
           email: string;
+          employment_type?: string;
           first_name?: string | null;
           hourly_rate?: number;
           id: string;
           last_name?: string | null;
           pto_rule?: string | null;
+          pto_rule_advance_at?: string | null;
           role?: Database["public"]["Enums"]["app_role"];
           start_date?: string | null;
+          sub_team?: Database["public"]["Enums"]["sub_team"] | null;
           team?: string | null;
           updated_at?: string;
           uto_rule?: string | null;
@@ -320,13 +326,16 @@ export type Database = {
           birthday?: string | null;
           created_at?: string;
           email?: string;
+          employment_type?: string;
           first_name?: string | null;
           hourly_rate?: number;
           id?: string;
           last_name?: string | null;
           pto_rule?: string | null;
+          pto_rule_advance_at?: string | null;
           role?: Database["public"]["Enums"]["app_role"];
           start_date?: string | null;
+          sub_team?: Database["public"]["Enums"]["sub_team"] | null;
           team?: string | null;
           updated_at?: string;
           uto_rule?: string | null;
@@ -620,6 +629,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "manager" | "ccm" | "crm";
       rule_unit: "DAY" | "MONTH" | "YEAR"; //TODO: When we handle pregancy time off we will need to include HOUR since they get 10 hours for doctor appointments
+      sub_team: "Cascade" | "Denali" | "DSS/NSS" | "Everest" | "Fuji" | "Kilimanjaro" | "K2" | "Matterhorn";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -736,6 +746,7 @@ export const Constants = {
     public: {
         Enums: {
             app_role: ["admin", "manager", "ccm", "crm"],
+            sub_team: ["Cascade", "Denali", "DSS/NSS", "Everest", "Fuji", "Kilimanjaro", "K2", "Matterhorn"],
         },
     },
   } as const;

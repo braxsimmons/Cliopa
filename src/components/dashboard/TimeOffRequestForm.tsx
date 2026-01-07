@@ -31,6 +31,7 @@ export const TimeOffRequestForm = ({
   const [loading, setLoading] = useState(false);
   const [hasEnoughBalance, setHasEnoughBalance] = useState(false);
   const [timeOffBalance, setTimeOffBalance] = useState();
+  const [currentBalance, setCurrentBalance] = useState(0);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -47,6 +48,11 @@ export const TimeOffRequestForm = ({
           numDaysRequested += period.days_requested_in_period;
           if (period.days_requested_in_period > period.current_available) {
             enoughBalance = false;
+          }
+          if (requestType === "PTO") {
+            setCurrentBalance(period.current_available);
+          } else {
+            setCurrentBalance(profile?.available_uto || 0);
           }
         }
         if (requestType === "UTO" && numDaysRequested > 3) {
@@ -96,8 +102,6 @@ export const TimeOffRequestForm = ({
     addDays(new Date(profile?.start_date), 90)
   ); //EligibleForPTO after 90 days
 
-  const currentBalance = requestType === "PTO" ? ptoBalance : utoBalance;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!startDate || !endDate) {
@@ -128,6 +132,7 @@ export const TimeOffRequestForm = ({
       return;
     }
 
+    console.log("Current Balance:", currentBalance);
     if (requestedDays > currentBalance) {
       toast({
         title: `Insufficient ${requestType} Balance`,

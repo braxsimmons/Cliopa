@@ -124,7 +124,7 @@ export const useEarlyClockIn = () => {
         toast({
           title: "Early Clock-In Scheduled",
           description:
-            "Company policy states that employees may only clock in 5 minutes early. Your clock will start then. Thanks!",
+            "Company policy states that employees may only clock in 10 minutes early. Your clock will start then. Thanks!",
           duration: 5000,
         });
         return data;

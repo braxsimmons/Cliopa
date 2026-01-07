@@ -14,6 +14,7 @@ CREATE TABLE public.profiles (
 	uto_rule UUID DEFAULT NULL,
 	pto_rule_advance_at DATE NULL,
 	employment_type TEXT NOT NULL DEFAULT 'Full-Time',
+	sub_team public.sub_team NULL,
 	CONSTRAINT profiles_pkey PRIMARY KEY (id),
 	CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users (id) ON DELETE CASCADE,
 	CONSTRAINT pto_rule_fkey FOREIGN KEY (pto_rule) REFERENCES public.time_off_rules(id),

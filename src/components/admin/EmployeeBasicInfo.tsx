@@ -10,7 +10,12 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, AlertCircle } from "lucide-react";
-import { EmployeeData, TEAM_OPTIONS, EMPLOYMENT_TYPE } from "@/types/employee";
+import {
+  EmployeeData,
+  TEAM_OPTIONS,
+  SUB_TEAM_OPTIONS,
+  EMPLOYMENT_TYPE,
+} from "@/types/employee";
 import { format, parseISO } from "date-fns";
 import { TimeOffRuleData } from "./EmployeeProfile";
 
@@ -146,6 +151,30 @@ export const EmployeeBasicInfo = ({
         </div>
 
         <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="sub_team">Sub Team</Label>
+            {editing ? (
+              <Select
+                value={editForm.sub_team || ""}
+                onValueChange={(value) => onUpdateForm({ sub_team: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select sub team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUB_TEAM_OPTIONS.map((subTeam) => (
+                    <SelectItem key={subTeam} value={subTeam}>
+                      {subTeam}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="text-sm py-2">
+                {employee.sub_team || "Not assigned"}
+              </div>
+            )}
+          </div>
           <div>
             <Label htmlFor="start_date">Start Date</Label>
             {editing ? (

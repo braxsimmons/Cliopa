@@ -1,0 +1,15 @@
+# Airflow Core
+apache-airflow>=2.8.0
+
+# Database Connectors
+pymssql>=2.2.8
+supabase>=2.0.0
+
+# AI/ML
+google-generativeai>=0.3.0
+
+# HTTP
+requests>=2.31.0
+
+# Utilities
+python-dotenv>=1.0.0
