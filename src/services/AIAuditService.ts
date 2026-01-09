@@ -202,6 +202,14 @@ export interface CriterionResult {
   recommendation?: string;
 }
 
+// Reviewer reconciliation metadata (not stored in DB directly; rolled into recommendations/notes)
+interface ReviewOutcome {
+  decision: 'accept' | 'revise';
+  notes: string[];
+  issues: string[];
+  corrected?: Partial<AIAuditResult> & { criteria_results?: CriterionResult[] };
+}
+
 // Default scoring adjustments per call type
 const CALL_TYPE_SCORING: Record<CallType, ScoringAdjustment> = {
   live_call: {
@@ -400,6 +408,49 @@ const CALL_TYPE_SCORING: Record<CallType, ScoringAdjustment> = {
     explanation: 'Unknown call type - applying standard scoring',
   },
 };
+
+// Shared helpers for clamping/validation and weighted aggregation
+const clampScore = (score: number): number => Math.min(100, Math.max(0, Math.round(score)));
+
+const validateScore = (score: unknown): number => {
+  const num = typeof score === 'number' ? score : parseFloat(String(score));
+  return isNaN(num) ? 0 : clampScore(num);
+};
+
+function computeWeightedScores(
+  input: {
+    compliance_score?: number;
+    communication_score?: number;
+    empathy_score?: number;
+    resolution_score?: number;
+    accuracy_score?: number;
+    tone_score?: number;
+  },
+  adjustments: ScoringAdjustment['adjustments'],
+) {
+  const adjustedScores = {
+    compliance_score: clampScore(validateScore(input.compliance_score) * adjustments.compliance_weight),
+    communication_score: clampScore(validateScore(input.communication_score) * adjustments.communication_weight),
+    empathy_score: clampScore(validateScore(input.empathy_score) * adjustments.empathy_weight),
+    resolution_score: clampScore(validateScore(input.resolution_score) * adjustments.resolution_weight),
+    accuracy_score: clampScore(validateScore(input.accuracy_score) * adjustments.accuracy_weight),
+    tone_score: clampScore(validateScore(input.tone_score) * adjustments.tone_weight),
+  };
+
+  const totalWeight = adjustments.compliance_weight + adjustments.communication_weight +
+    adjustments.empathy_weight + adjustments.resolution_weight + adjustments.accuracy_weight + adjustments.tone_weight;
+
+  const weightedOverall = totalWeight > 0 ? (
+    adjustedScores.compliance_score * adjustments.compliance_weight +
+    adjustedScores.communication_score * adjustments.communication_weight +
+    adjustedScores.empathy_score * adjustments.empathy_weight +
+    adjustedScores.resolution_score * adjustments.resolution_weight +
+    adjustedScores.accuracy_score * adjustments.accuracy_weight +
+    adjustedScores.tone_score * adjustments.tone_weight
+  ) / totalWeight : 0;
+
+  return { adjustedScores, weightedOverall: clampScore(weightedOverall) };
+}
 
 /**
  * Build the call type detection prompt
@@ -669,15 +720,6 @@ export async function auditCallWithTypeDetection(
     options.isCRMRetentionCall || callType.callType === 'retention_call'
   );
 
-  // Helper to clamp scores to valid 0-100 range
-  const clampScore = (score: number): number => Math.min(100, Math.max(0, Math.round(score)));
-
-  // Helper to validate score from AI response
-  const validateScore = (score: unknown): number => {
-    const num = typeof score === 'number' ? score : parseFloat(String(score));
-    return isNaN(num) ? 0 : clampScore(num);
-  };
-
   // Retry logic with exponential backoff
   const maxRetries = 3;
   let lastError: Error | null = null;
@@ -693,28 +735,7 @@ export async function auditCallWithTypeDetection(
       }
 
       // Apply scoring weights with validation and clamping
-      const adjustedScores = {
-        compliance_score: clampScore(validateScore(parsed.compliance_score) * scoringAdjustment.adjustments.compliance_weight),
-        communication_score: clampScore(validateScore(parsed.communication_score) * scoringAdjustment.adjustments.communication_weight),
-        empathy_score: clampScore(validateScore(parsed.empathy_score) * scoringAdjustment.adjustments.empathy_weight),
-        resolution_score: clampScore(validateScore(parsed.resolution_score) * scoringAdjustment.adjustments.resolution_weight),
-        accuracy_score: clampScore(validateScore(parsed.accuracy_score) * scoringAdjustment.adjustments.accuracy_weight),
-        tone_score: clampScore(validateScore(parsed.tone_score) * scoringAdjustment.adjustments.tone_weight),
-      };
-
-      // Calculate weighted overall score
-      const weights = scoringAdjustment.adjustments;
-      const totalWeight = weights.compliance_weight + weights.communication_weight +
-        weights.empathy_weight + weights.resolution_weight + weights.accuracy_weight + weights.tone_weight;
-
-      const weightedOverall = totalWeight > 0 ? (
-        adjustedScores.compliance_score * weights.compliance_weight +
-        adjustedScores.communication_score * weights.communication_weight +
-        adjustedScores.empathy_score * weights.empathy_weight +
-        adjustedScores.resolution_score * weights.resolution_weight +
-        adjustedScores.accuracy_score * weights.accuracy_weight +
-        adjustedScores.tone_score * weights.tone_weight
-      ) / totalWeight : 0;
+      const { adjustedScores, weightedOverall } = computeWeightedScores(parsed, scoringAdjustment.adjustments);
 
       return {
         callType,
@@ -911,6 +932,135 @@ function parseJSONResponse(response: string): any {
     }
     throw new Error('Failed to parse AI response as JSON');
   }
+}
+
+function buildReviewPrompt(
+  transcript: string,
+  criteria: any[],
+  primary: AIAuditResult,
+  scoringAdjustment: ScoringAdjustment,
+): string {
+  const criteriaList = criteria
+    .map((c) => `- ${c.id}: ${c.name} (weight ${c.weight ?? 1})`)
+    .join('\n');
+
+  return `You are a strict QA reviewer. Check the first-pass audit for consistency.
+
+Return JSON only:
+{
+  "decision": "accept" | "revise",
+  "issues": string[],
+  "notes": string[],
+  "corrected": {
+    "overall_score": number,
+    "communication_score": number,
+    "compliance_score": number,
+    "accuracy_score": number,
+    "tone_score": number,
+    "empathy_score": number,
+    "resolution_score": number,
+    "criteria": [
+      { "id": string, "name": string, "result": "PASS" | "PARTIAL" | "FAIL" | "N/A", "score": number, "explanation": string, "recommendation"?: string }
+    ],
+    "feedback"?: string,
+    "strengths"?: string[],
+    "areas_for_improvement"?: string[],
+    "recommendations"?: string[]
+  }
+}
+
+Rules:
+- Ensure weighted scores respect call type: ${primary.callType.callType} with weights {compliance:${scoringAdjustment.adjustments.compliance_weight}, communication:${scoringAdjustment.adjustments.communication_weight}, empathy:${scoringAdjustment.adjustments.empathy_weight}, resolution:${scoringAdjustment.adjustments.resolution_weight}, accuracy:${scoringAdjustment.adjustments.accuracy_weight}, tone:${scoringAdjustment.adjustments.tone_weight}}.
+- Flag missing/illogical criteria or NA where a score is required.
+- If the first pass looks valid, use decision="accept" and copy its numbers.
+- If you change anything, set decision="revise" and fill corrected.
+
+Transcript:
+${transcript.slice(0, 6000)}
+
+First-pass summary:
+${JSON.stringify({
+    overall_score: primary.overall_score,
+    compliance_score: primary.compliance_score,
+    communication_score: primary.communication_score,
+    empathy_score: primary.empathy_score,
+    resolution_score: primary.resolution_score,
+    accuracy_score: primary.accuracy_score,
+    tone_score: primary.tone_score,
+    callType: primary.callType.callType,
+  })}
+
+Criteria definition:
+${criteriaList}
+`;
+}
+
+async function runReviewPass(
+  transcript: string,
+  criteria: any[],
+  primary: AIAuditResult,
+  scoringAdjustment: ScoringAdjustment,
+  aiProvider: AIProvider,
+  options: { reviewerTemperature: number; reviewerModel?: string }
+): Promise<ReviewOutcome | null> {
+  try {
+    const reviewProvider: AIProvider = {
+      ...aiProvider,
+      model: options.reviewerModel || aiProvider.model,
+      temperature: options.reviewerTemperature,
+      maxTokens: Math.min(aiProvider.maxTokens, 1200),
+    };
+
+    const prompt = buildReviewPrompt(transcript, criteria, primary, scoringAdjustment);
+    const response = await callAIProvider(reviewProvider, prompt);
+    const parsed = parseJSONResponse(response);
+
+    const decision = parsed?.decision === 'revise' ? 'revise' : 'accept';
+    const issues = Array.isArray(parsed?.issues) ? parsed.issues : [];
+    const notes = Array.isArray(parsed?.notes) ? parsed.notes : [];
+    const corrected = parsed?.corrected;
+
+    return { decision, issues, notes, corrected };
+  } catch (error) {
+    console.warn('Reviewer pass failed, proceeding with primary result:', error);
+    return null;
+  }
+}
+
+function reconcileReview(
+  primary: AIAuditResult,
+  review: ReviewOutcome,
+  scoringAdjustment: ScoringAdjustment,
+  maxDelta: number,
+): AIAuditResult {
+  let updated = { ...primary };
+
+  if (review.decision === 'revise' && review.corrected) {
+    const { adjustedScores, weightedOverall } = computeWeightedScores(review.corrected, scoringAdjustment.adjustments);
+    updated = {
+      ...updated,
+      ...adjustedScores,
+      overall_score: weightedOverall,
+      feedback: review.corrected.feedback ?? updated.feedback,
+      strengths: review.corrected.strengths ?? updated.strengths,
+      areas_for_improvement: review.corrected.areas_for_improvement ?? updated.areas_for_improvement,
+      recommendations: review.corrected.recommendations ?? updated.recommendations,
+      criteria_results: review.corrected.criteria_results ?? updated.criteria_results,
+    };
+  }
+
+  const delta = Math.abs((updated.overall_score ?? 0) - (primary.overall_score ?? 0));
+  const reviewSummary = `[Review:${review.decision}] delta=${delta.toFixed(1)} | issues=${review.issues.slice(0, 3).join('; ') || 'none'}`;
+
+  updated.recommendations = [...(updated.recommendations || []), reviewSummary, ...review.notes.map((n: string) => `[Review note] ${n}`)];
+  updated.scoring_notes = `${primary.scoring_notes || ''}\nReviewer decision: ${review.decision}. Issues: ${review.issues.join('; ') || 'none'}. Delta: ${delta.toFixed(1)}.`;
+
+  // If reviewer delta exceeds tolerance, prefer reviewer-adjusted (already applied above). No extra action needed.
+  if (delta > maxDelta && review.decision === 'accept') {
+    updated.recommendations.push(`[Review warning] Delta ${delta.toFixed(1)} exceeds threshold ${maxDelta}`);
+  }
+
+  return updated;
 }
 
 /**
@@ -1143,6 +1293,11 @@ export async function performAudit(
     campaignName?: string;
     callType?: string;
     skipCache?: boolean;
+    reviewEnabled?: boolean;
+    reviewSampleRate?: number;
+    reviewMaxDelta?: number;
+    reviewerTemperature?: number;
+    reviewerModel?: string;
   } = {}
 ): Promise<AIAuditResult & { explanation?: string; fromCache?: boolean }> {
   // Check cache first (unless explicitly skipped)
@@ -1176,26 +1331,55 @@ export async function performAudit(
     }
   );
 
+  // Optional reviewer pass for consistency checking
+  let finalResult = result;
+
+  if (result.scorable) {
+    const reviewConfig = {
+      enabled: options.reviewEnabled ?? true,
+      sampleRate: options.reviewSampleRate ?? 0.2,
+      maxDelta: options.reviewMaxDelta ?? 5,
+      reviewerTemperature: options.reviewerTemperature ?? 0.2,
+      reviewerModel: options.reviewerModel,
+    };
+
+    if (reviewConfig.enabled && Math.random() < reviewConfig.sampleRate) {
+      const scoringAdjustment = CALL_TYPE_SCORING[result.callType.callType];
+      const reviewOutcome = await runReviewPass(
+        transcript,
+        criteria,
+        result,
+        scoringAdjustment,
+        aiProvider,
+        { reviewerTemperature: reviewConfig.reviewerTemperature, reviewerModel: reviewConfig.reviewerModel }
+      );
+
+      if (reviewOutcome) {
+        finalResult = reconcileReview(result, reviewOutcome, scoringAdjustment, reviewConfig.maxDelta);
+      }
+    }
+  }
+
   // Cache the result for future use
   if (!options.skipCache) {
     try {
       const transcriptHash = await hashTranscript(transcript);
-      await setCachedAudit(transcriptHash, result, aiProvider.name, aiProvider.model);
+      await setCachedAudit(transcriptHash, finalResult, aiProvider.name, aiProvider.model);
     } catch (e) {
       console.warn('Failed to cache audit result:', e);
     }
   }
 
   // Add explanation for non-scorable calls
-  if (!result.scorable) {
+  if (!finalResult.scorable) {
     return {
-      ...result,
+      ...finalResult,
       fromCache: false,
-      explanation: result.scoring_notes,
+      explanation: finalResult.scoring_notes,
     };
   }
 
-  return { ...result, fromCache: false };
+  return { ...finalResult, fromCache: false };
 }
 
 /**
