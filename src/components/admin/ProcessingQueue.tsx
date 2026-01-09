@@ -75,7 +75,8 @@ interface ProcessingResult {
   message?: string;
 }
 
-const LOCAL_API_URL = "http://localhost:3001";
+// Local processing server URL - optional, leave empty if not using local server
+const LOCAL_API_URL = import.meta.env.VITE_LOCAL_PROCESSING_URL || "";
 
 export default function ProcessingQueue() {
   const [stats, setStats] = useState<ProcessingStats | null>(null);
@@ -94,7 +95,7 @@ export default function ProcessingQueue() {
   useEffect(() => {
     loadStats();
     loadSyncStatus();
-    checkLocalServer();
+    if (LOCAL_API_URL) checkLocalServer();
     loadPendingCount();
 
     // Auto-refresh every 30 seconds
@@ -102,16 +103,16 @@ export default function ProcessingQueue() {
       const interval = setInterval(() => {
         loadStats();
         loadSyncStatus();
-        checkLocalServer();
+        if (LOCAL_API_URL) checkLocalServer();
         loadPendingCount();
       }, 30000);
       return () => clearInterval(interval);
     }
   }, [autoRefresh]);
 
-  // Poll for processing status when processing
+  // Poll for processing status when processing (only if local server configured)
   useEffect(() => {
-    if (processing && !pollingInterval) {
+    if (processing && !pollingInterval && LOCAL_API_URL) {
       const interval = setInterval(async () => {
         try {
           const response = await fetch(`${LOCAL_API_URL}/api/status`);
@@ -200,6 +201,11 @@ export default function ProcessingQueue() {
   }
 
   async function checkLocalServer() {
+    // Skip if no local server URL configured
+    if (!LOCAL_API_URL) {
+      setLocalStatus({ available: false, lmStudio: { available: false }, whisper: { method: "none" }, processing: false });
+      return;
+    }
     try {
       const response = await fetch(`${LOCAL_API_URL}/api/health`, {
         method: "GET",

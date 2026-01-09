@@ -915,16 +915,15 @@ function parseJSONResponse(response: string): any {
 
 /**
  * Get default AI provider configuration
+ * Requires VITE_GEMINI_API_KEY environment variable
  */
 export function getDefaultAIProvider(): AIProvider {
-  // Check for LM Studio first (local/free)
-  return {
-    name: 'lmstudio',
-    endpoint: 'http://localhost:1234/v1/chat/completions',
-    model: 'local-model',
-    maxTokens: 4000,
-    temperature: 0.3,
-  };
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (geminiKey) {
+    return getGeminiProvider(geminiKey);
+  }
+  // Fallback - will fail without API key
+  throw new Error('No AI provider configured. Please set VITE_GEMINI_API_KEY in your environment.');
 }
 
 /**
@@ -942,7 +941,8 @@ export function getOpenAIProvider(apiKey: string): AIProvider {
 }
 
 /**
- * Get Ollama provider configuration (for local/server deployment)
+ * Get Ollama provider configuration (for self-hosted deployment)
+ * Requires explicit host configuration - no localhost fallback
  *
  * Recommended models for call auditing:
  * - llama3.1:8b - Good balance of speed and quality
@@ -952,9 +952,12 @@ export function getOpenAIProvider(apiKey: string): AIProvider {
  * - qwen2.5:14b - Excellent for structured output
  */
 export function getOllamaProvider(
-  host: string = 'http://localhost:11434',
+  host: string,
   model: string = 'llama3.1:8b'
 ): AIProvider {
+  if (!host) {
+    throw new Error('Ollama host URL is required. Configure it in AI Settings.');
+  }
   return {
     name: 'ollama',
     endpoint: `${host}/v1/chat/completions`,
@@ -1085,8 +1088,10 @@ export async function checkProviderAvailability(provider: AIProvider): Promise<b
 
 /**
  * List available Ollama models
+ * Requires explicit host - no localhost fallback
  */
-export async function listOllamaModels(host: string = 'http://localhost:11434'): Promise<string[]> {
+export async function listOllamaModels(host: string): Promise<string[]> {
+  if (!host) return [];
   try {
     const response = await fetch(`${host}/api/tags`);
     if (!response.ok) return [];
@@ -1099,10 +1104,11 @@ export async function listOllamaModels(host: string = 'http://localhost:11434'):
 
 /**
  * Pull an Ollama model (download if not present)
+ * Requires explicit host - no localhost fallback
  */
 export async function pullOllamaModel(
   model: string,
-  host: string = 'http://localhost:11434',
+  host: string,
   onProgress?: (status: string) => void
 ): Promise<boolean> {
   try {
@@ -1213,10 +1219,10 @@ export async function runAudit(
 
   if (options.preferredProvider === 'gemini' && options.geminiApiKey) {
     aiProvider = getGeminiProvider(options.geminiApiKey);
-  } else if (options.preferredProvider === 'ollama') {
-    aiProvider = getOllamaProvider(options.ollamaHost || 'http://localhost:11434');
+  } else if (options.preferredProvider === 'ollama' && options.ollamaHost) {
+    aiProvider = getOllamaProvider(options.ollamaHost);
   } else {
-    // Default to LM Studio
+    // Default to Gemini (requires VITE_GEMINI_API_KEY)
     aiProvider = getDefaultAIProvider();
   }
 

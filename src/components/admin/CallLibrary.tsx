@@ -101,7 +101,7 @@ const TAG_COLORS = [
   { value: 'teal', label: 'Teal', class: 'bg-teal-500' },
 ];
 
-const LOCAL_API_URL = 'http://localhost:3001';
+const LOCAL_API_URL = import.meta.env.VITE_LOCAL_API_URL || "";
 
 interface ProcessingStatus {
   isProcessing: boolean;
@@ -151,8 +151,14 @@ export const CallLibrary = () => {
   const [processingCall, setProcessingCall] = useState<string | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set());
 
-  // Poll for processing status every 3 seconds
+  // Poll for processing status every 3 seconds (only if local API is configured)
   useEffect(() => {
+    if (!LOCAL_API_URL) {
+      setServerAvailable(false);
+      setProcessingStatus(null);
+      return;
+    }
+
     const checkProcessingStatus = async () => {
       try {
         const response = await fetch(`${LOCAL_API_URL}/api/status`);

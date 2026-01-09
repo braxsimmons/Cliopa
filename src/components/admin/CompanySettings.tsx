@@ -493,9 +493,12 @@ export const CompanySettingsPage = () => {
                   // Set default model for the provider
                   const defaultModel = value === 'openai' ? 'gpt-4o-mini' : 'local-model';
                   updateSetting('ai_model', defaultModel);
-                  // Set default endpoint for LM Studio
+                  // Clear endpoint when switching away from cloud providers
                   if (value === 'lmstudio' || value === 'local') {
-                    updateSetting('ai_endpoint', settings.ai_endpoint || 'http://localhost:1234/v1');
+                    // Endpoint must be configured manually - no default localhost
+                    if (!settings.ai_endpoint) {
+                      updateSetting('ai_endpoint', '');
+                    }
                   }
                 }}
               >
@@ -565,13 +568,13 @@ export const CompanySettingsPage = () => {
             <div>
               <Label className="text-[var(--color-text)]">LM Studio Endpoint</Label>
               <Input
-                value={settings.ai_endpoint || 'http://localhost:1234/v1'}
+                value={settings.ai_endpoint || ''}
                 onChange={(e) => updateSetting('ai_endpoint', e.target.value)}
-                placeholder="http://localhost:1234/v1"
+                placeholder="e.g., http://your-server:1234/v1"
                 className="bg-[var(--color-bg)] border-[var(--color-border)] text-[var(--color-text)] font-mono"
               />
               <p className="text-xs text-[var(--color-subtext)] mt-1">
-                Default: http://localhost:1234/v1 (LM Studio's OpenAI-compatible API)
+                Enter your LM Studio server's OpenAI-compatible API endpoint
               </p>
             </div>
           )}

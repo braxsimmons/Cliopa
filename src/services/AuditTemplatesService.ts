@@ -255,3 +255,218 @@ export function getAvailableDimensions(): { value: AuditDimension; label: string
     { value: 'tone', label: 'Tone' },
   ];
 }
+
+// Bulk import templates from JSON
+export async function bulkImportTemplates(templates: AuditTemplateInsert[]): Promise<{
+  imported: number;
+  errors: { index: number; name: string; error: string }[];
+}> {
+  const results = {
+    imported: 0,
+    errors: [] as { index: number; name: string; error: string }[],
+  };
+
+  for (let i = 0; i < templates.length; i++) {
+    const template = templates[i];
+    try {
+      // Validate template
+      if (!template.name?.trim()) {
+        results.errors.push({ index: i, name: template.name || 'Unknown', error: 'Template name is required' });
+        continue;
+      }
+      if (!template.criteria || template.criteria.length === 0) {
+        results.errors.push({ index: i, name: template.name, error: 'At least one criterion is required' });
+        continue;
+      }
+
+      // Validate criteria
+      const criteriaIds = template.criteria.map(c => c.id);
+      const duplicateIds = criteriaIds.filter((id, idx) => criteriaIds.indexOf(id) !== idx);
+      if (duplicateIds.length > 0) {
+        results.errors.push({ index: i, name: template.name, error: `Duplicate criterion IDs: ${duplicateIds.join(', ')}` });
+        continue;
+      }
+
+      // Create template (never set as default during bulk import)
+      const { error } = await createAuditTemplate({
+        ...template,
+        is_default: false,
+      });
+
+      if (error) {
+        results.errors.push({ index: i, name: template.name, error: error.message });
+      } else {
+        results.imported++;
+      }
+    } catch (err) {
+      results.errors.push({ index: i, name: template.name, error: (err as Error).message });
+    }
+  }
+
+  return results;
+}
+
+// Export templates to JSON format
+export function exportTemplatesToJSON(templates: AuditTemplate[]): string {
+  const exportData = templates.map(t => ({
+    name: t.name,
+    description: t.description,
+    is_default: t.is_default,
+    criteria: t.criteria,
+  }));
+  return JSON.stringify(exportData, null, 2);
+}
+
+// Export templates to CSV format (flattened)
+export function exportTemplatesToCSV(templates: AuditTemplate[]): string {
+  const headers = [
+    'template_name',
+    'template_description',
+    'is_default',
+    'criterion_id',
+    'criterion_name',
+    'criterion_description',
+    'criterion_dimension',
+    'criterion_weight',
+  ];
+
+  const rows: string[][] = [headers];
+
+  templates.forEach(template => {
+    template.criteria.forEach((criterion, idx) => {
+      rows.push([
+        idx === 0 ? template.name : '',
+        idx === 0 ? template.description || '' : '',
+        idx === 0 ? template.is_default.toString() : '',
+        criterion.id,
+        criterion.name,
+        criterion.description,
+        criterion.dimension,
+        criterion.weight.toString(),
+      ]);
+    });
+  });
+
+  return rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+}
+
+// Parse CSV import for templates
+export function parseTemplatesFromCSV(csvContent: string): {
+  templates: AuditTemplateInsert[];
+  errors: string[];
+} {
+  const lines = csvContent.split('\n').filter(line => line.trim());
+  const errors: string[] = [];
+  const templatesMap = new Map<string, AuditTemplateInsert>();
+
+  // Skip header row
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    const columns = parseCSVLine(line);
+
+    if (columns.length < 8) {
+      errors.push(`Row ${i + 1}: Invalid number of columns (expected 8, got ${columns.length})`);
+      continue;
+    }
+
+    const [
+      templateName,
+      templateDescription,
+      isDefault,
+      criterionId,
+      criterionName,
+      criterionDescription,
+      criterionDimension,
+      criterionWeight,
+    ] = columns;
+
+    // Start new template or add to existing
+    const name = templateName.trim() || Array.from(templatesMap.keys()).pop() || '';
+    if (!name) {
+      errors.push(`Row ${i + 1}: No template name found`);
+      continue;
+    }
+
+    if (!templatesMap.has(name)) {
+      templatesMap.set(name, {
+        name,
+        description: templateDescription.trim() || undefined,
+        is_default: isDefault.toLowerCase() === 'true',
+        criteria: [],
+      });
+    }
+
+    // Validate dimension
+    const validDimensions: AuditDimension[] = ['compliance', 'accuracy', 'communication', 'resolution', 'empathy', 'tone'];
+    const dimension = criterionDimension.trim().toLowerCase() as AuditDimension;
+    if (!validDimensions.includes(dimension)) {
+      errors.push(`Row ${i + 1}: Invalid dimension "${criterionDimension}". Valid options: ${validDimensions.join(', ')}`);
+      continue;
+    }
+
+    // Add criterion
+    const template = templatesMap.get(name)!;
+    template.criteria.push({
+      id: criterionId.trim().toUpperCase().replace(/\s+/g, '_'),
+      name: criterionName.trim(),
+      description: criterionDescription.trim(),
+      dimension,
+      weight: parseFloat(criterionWeight) || 1.0,
+    });
+  }
+
+  return {
+    templates: Array.from(templatesMap.values()),
+    errors,
+  };
+}
+
+// Helper to parse CSV line respecting quoted values
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+
+  return result;
+}
+
+// Generate CSV template for download
+export function generateCSVTemplate(): string {
+  const headers = [
+    'template_name',
+    'template_description',
+    'is_default',
+    'criterion_id',
+    'criterion_name',
+    'criterion_description',
+    'criterion_dimension',
+    'criterion_weight',
+  ];
+
+  const exampleRows = [
+    ['Collections Audit Template', 'Standard audit for collections calls', 'false', 'VCI', 'Verify Customer Identity', 'Agent verifies customer name and account number', 'compliance', '1.0'],
+    ['', '', '', 'QQ', 'Qualifying Questions', 'Agent asks qualifying questions about the situation', 'communication', '1.0'],
+    ['', '', '', 'EMPATHY', 'Empathy Displayed', 'Agent shows understanding and empathy', 'empathy', '1.5'],
+    ['Sales Audit Template', 'Audit for sales calls', 'false', 'GREETING', 'Professional Greeting', 'Agent greets customer professionally', 'communication', '1.0'],
+  ];
+
+  return [headers, ...exampleRows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+}

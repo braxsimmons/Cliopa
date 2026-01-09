@@ -24,4 +24,17 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Production build optimizations
+  build: {
+    // Use esbuild for minification (faster, included by default)
+    minify: 'esbuild',
+  },
+  esbuild: {
+    // Remove console.log in production builds
+    drop: mode === 'production' ? ['console', 'debugger'] : [],
+  },
+  // Define environment variables for runtime checks
+  define: {
+    __DEV__: mode !== 'production',
+  },
 }));

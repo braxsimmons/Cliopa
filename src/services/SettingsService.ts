@@ -39,11 +39,11 @@ const DEFAULT_SETTINGS: CompanySettings = {
   require_scheduled_shift: false,
   break_tracking_enabled: false,
   auto_clock_out_hours: 12,
-  // AI defaults
+  // AI defaults - use Gemini as default provider
   ai_provider: 'openai',
   ai_api_key: '',
-  ai_endpoint: 'http://localhost:1234/v1',
-  ai_model: 'gpt-4o-mini',
+  ai_endpoint: '',
+  ai_model: 'gemini-2.0-flash',
 };
 
 // Service to get user's public IP address

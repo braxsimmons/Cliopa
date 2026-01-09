@@ -12,6 +12,10 @@ import {
   Star,
   FileText,
   AlertCircle,
+  Upload,
+  Download,
+  FileJson,
+  Table,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,6 +57,7 @@ import {
   AuditTemplate,
   AuditCriterion,
   AuditDimension,
+  AuditTemplateInsert,
   getAuditTemplates,
   createAuditTemplate,
   updateAuditTemplate,
@@ -60,7 +65,20 @@ import {
   duplicateAuditTemplate,
   getDimensionColor,
   getAvailableDimensions,
+  bulkImportTemplates,
+  exportTemplatesToJSON,
+  exportTemplatesToCSV,
+  parseTemplatesFromCSV,
+  generateCSVTemplate,
 } from '@/services/AuditTemplatesService';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 
@@ -524,7 +542,14 @@ export const AuditTemplateEditor: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<AuditTemplate | null>(null);
   const [duplicateName, setDuplicateName] = useState('');
   const [duplicatingTemplate, setDuplicatingTemplate] = useState<AuditTemplate | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importType, setImportType] = useState<'csv' | 'json'>('csv');
+  const [importContent, setImportContent] = useState('');
+  const [importPreviews, setImportPreviews] = useState<AuditTemplateInsert[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
   const { toast } = useToast();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchTemplates = async () => {
     setLoading(true);
@@ -597,6 +622,98 @@ export const AuditTemplateEditor: React.FC = () => {
     fetchTemplates();
   };
 
+  // Export handlers
+  const handleExportJSON = () => {
+    const json = exportTemplatesToJSON(templates);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-templates-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Exported', description: `${templates.length} templates exported as JSON` });
+  };
+
+  const handleExportCSV = () => {
+    const csv = exportTemplatesToCSV(templates);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-templates-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Exported', description: `${templates.length} templates exported as CSV` });
+  };
+
+  const handleDownloadTemplate = () => {
+    const csv = generateCSVTemplate();
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'audit-template-import-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Import handlers
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setImportContent(content);
+
+      if (file.name.endsWith('.json')) {
+        setImportType('json');
+        try {
+          const parsed = JSON.parse(content);
+          setImportPreviews(Array.isArray(parsed) ? parsed : [parsed]);
+          setImportErrors([]);
+        } catch (err) {
+          setImportErrors(['Invalid JSON format']);
+          setImportPreviews([]);
+        }
+      } else {
+        setImportType('csv');
+        const { templates: parsed, errors } = parseTemplatesFromCSV(content);
+        setImportPreviews(parsed);
+        setImportErrors(errors);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (importPreviews.length === 0) return;
+
+    setImporting(true);
+    const result = await bulkImportTemplates(importPreviews);
+    setImporting(false);
+
+    if (result.imported > 0) {
+      toast({
+        title: 'Import Complete',
+        description: `${result.imported} templates imported successfully${result.errors.length > 0 ? `, ${result.errors.length} failed` : ''}`,
+      });
+      fetchTemplates();
+      setImportDialogOpen(false);
+      setImportContent('');
+      setImportPreviews([]);
+      setImportErrors([]);
+    } else {
+      toast({
+        title: 'Import Failed',
+        description: result.errors.map(e => e.error).join(', '),
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -607,6 +724,15 @@ export const AuditTemplateEditor: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.json"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -617,13 +743,44 @@ export const AuditTemplateEditor: React.FC = () => {
             Manage the criteria templates used for call auditing
           </p>
         </div>
-        <Button
-          onClick={handleCreate}
-          className="bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Template
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Import/Export Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="border-[var(--color-border)] text-[var(--color-text)]">
+                <Upload className="h-4 w-4 mr-2" />
+                Import/Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-[var(--color-surface)] border-[var(--color-border)]">
+              <DropdownMenuItem onClick={() => setImportDialogOpen(true)} className="text-[var(--color-text)]">
+                <Upload className="h-4 w-4 mr-2" />
+                Import Templates
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDownloadTemplate} className="text-[var(--color-text)]">
+                <Table className="h-4 w-4 mr-2" />
+                Download CSV Template
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-[var(--color-border)]" />
+              <DropdownMenuItem onClick={handleExportJSON} className="text-[var(--color-text)]">
+                <FileJson className="h-4 w-4 mr-2" />
+                Export as JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportCSV} className="text-[var(--color-text)]">
+                <Table className="h-4 w-4 mr-2" />
+                Export as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button
+            onClick={handleCreate}
+            className="bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Template
+          </Button>
+        </div>
       </div>
 
       {/* Templates List */}
@@ -795,6 +952,122 @@ export const AuditTemplateEditor: React.FC = () => {
             >
               <Copy className="h-4 w-4 mr-2" />
               Duplicate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => {
+        setImportDialogOpen(open);
+        if (!open) {
+          setImportContent('');
+          setImportPreviews([]);
+          setImportErrors([]);
+        }
+      }}>
+        <DialogContent className="max-w-2xl bg-[var(--color-surface)] border-[var(--color-border)]">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--color-text)]">Import Audit Templates</DialogTitle>
+            <DialogDescription className="text-[var(--color-subtext)]">
+              Upload a CSV or JSON file to import templates in bulk
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* File Upload */}
+            <div className="space-y-2">
+              <Label className="text-[var(--color-text)]">Upload File</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 border-[var(--color-border)] text-[var(--color-text)]"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Select CSV or JSON File
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadTemplate}
+                  className="border-[var(--color-border)] text-[var(--color-text)]"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Template
+                </Button>
+              </div>
+            </div>
+
+            {/* Preview */}
+            {importPreviews.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-[var(--color-text)]">
+                  Preview ({importPreviews.length} templates found)
+                </Label>
+                <ScrollArea className="h-48 border border-[var(--color-border)] rounded-lg p-3">
+                  <div className="space-y-2">
+                    {importPreviews.map((template, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 bg-[var(--color-bg)] rounded">
+                        <FileText className="h-4 w-4 text-[var(--color-subtext)]" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-[var(--color-text)]">
+                            {template.name}
+                          </p>
+                          <p className="text-xs text-[var(--color-subtext)]">
+                            {template.criteria.length} criteria
+                          </p>
+                        </div>
+                        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                          Ready
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+
+            {/* Errors */}
+            {importErrors.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-red-600">Errors ({importErrors.length})</Label>
+                <ScrollArea className="h-32 border border-red-200 dark:border-red-800 rounded-lg p-3 bg-red-50 dark:bg-red-950/20">
+                  <div className="space-y-1">
+                    {importErrors.map((error, idx) => (
+                      <p key={idx} className="text-xs text-red-600 dark:text-red-400">
+                        {error}
+                      </p>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setImportDialogOpen(false)}
+              className="border-[var(--color-border)] text-[var(--color-text)]"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImport}
+              disabled={importPreviews.length === 0 || importing}
+              className="bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white"
+            >
+              {importing ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import {importPreviews.length} Templates
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

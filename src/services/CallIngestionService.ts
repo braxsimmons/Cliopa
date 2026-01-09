@@ -89,9 +89,12 @@ class CallIngestionService {
           const aiSettings = settingsVal
             ? (typeof settingsVal === 'string' ? JSON.parse(settingsVal) : settingsVal)
             : {};
-          const endpoint = aiSettings.provider === 'ollama'
-            ? `${aiSettings.host || 'http://localhost:11434'}/v1/chat/completions`
-            : `${aiSettings.host || 'http://localhost:1234'}/v1/chat/completions`;
+
+          // Require explicit host configuration - no localhost fallback
+          if (!aiSettings.host) {
+            throw new Error('AI host not configured. Please configure AI settings.');
+          }
+          const endpoint = `${aiSettings.host}/v1/chat/completions`;
 
           processedTranscript = await addSpeakerLabels(
             processedTranscript,
@@ -332,9 +335,13 @@ class CallIngestionService {
           aiProvider = getGeminiProvider(settings.apiKey, settings.model || 'gemini-2.0-flash');
           break;
         case 'ollama':
-          aiProvider = getOllamaProvider(settings.host || 'http://localhost:11434', settings.model || 'llama3.1:8b');
+          if (!settings.host) {
+            return { success: false, error: 'Ollama host not configured. Go to AI Settings to set it up.' };
+          }
+          aiProvider = getOllamaProvider(settings.host, settings.model || 'llama3.1:8b');
           break;
         default:
+          // Default to Gemini
           aiProvider = getDefaultAIProvider();
       }
 
@@ -447,19 +454,16 @@ class CallIngestionService {
     template: any,
     settings: any
   ): Promise<any> {
-    const provider = settings.provider || 'lmstudio';
-    const host = settings.host || 'http://localhost:1234';
+    const provider = settings.provider || 'gemini';
     let endpoint = '';
     let headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
     switch (provider) {
-      case 'lmstudio':
-        // LM Studio uses OpenAI-compatible endpoint
-        endpoint = `${host}/v1/chat/completions`;
-        break;
       case 'ollama':
-        // Ollama can use OpenAI-compatible endpoint
-        endpoint = `${host}/v1/chat/completions`;
+        if (!settings.host) {
+          throw new Error('Ollama host not configured');
+        }
+        endpoint = `${settings.host}/v1/chat/completions`;
         break;
       case 'openai':
         endpoint = 'https://api.openai.com/v1/chat/completions';
@@ -467,12 +471,12 @@ class CallIngestionService {
           headers['Authorization'] = `Bearer ${settings.apiKey}`;
         }
         break;
+      case 'gemini':
       default:
-        // Default to LM Studio
-        endpoint = `${host}/v1/chat/completions`;
+        // Use Gemini API - this method shouldn't be called for Gemini
+        // as we use the dedicated Gemini provider instead
+        throw new Error('Use performAudit with Gemini provider instead');
     }
-
-    console.log(`Using AI provider: ${provider} at ${endpoint}`);
 
     const criteria = template?.criteria || this.getDefaultCriteria();
     const prompt = this.buildAuditPrompt(transcript, criteria);

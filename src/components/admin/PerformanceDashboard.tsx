@@ -170,35 +170,26 @@ export const PerformanceDashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text)] flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-[var(--color-accent)]" />
-            Performance Intelligence
-          </h1>
-          <p className="text-[var(--color-subtext)]">Real-time agent performance monitoring & insights</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={teamFilter} onValueChange={setTeamFilter}>
-            <SelectTrigger className="w-40 bg-[var(--color-surface)] border-[var(--color-border)]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="All Teams" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Teams</SelectItem>
-              {teams.map((team) => (
-                <SelectItem key={team} value={team}>
-                  {team}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
+      {/* Filters Bar */}
+      <div className="flex items-center justify-end gap-3">
+        <Select value={teamFilter} onValueChange={setTeamFilter}>
+          <SelectTrigger className="w-40 bg-[var(--color-surface)] border-[var(--color-border)]">
+            <Filter className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="All Teams" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Teams</SelectItem>
+            {teams.map((team) => (
+              <SelectItem key={team} value={team}>
+                {team}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       {/* KPI Cards */}

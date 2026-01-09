@@ -32,9 +32,9 @@ export interface TranscriptionSettings {
 }
 
 const DEFAULT_SETTINGS: TranscriptionSettings = {
-  provider: 'local',
-  localEndpoint: 'http://localhost:5000',
-  model: 'base',
+  provider: 'openai', // Default to OpenAI Whisper API
+  localEndpoint: '',  // No localhost fallback - must be configured
+  model: 'whisper-1',
   language: 'en',
 };
 
@@ -329,12 +329,16 @@ Return JSON with speaker labels for each segment.`
 
 /**
  * Add speaker labels to an existing transcript using AI
+ * Requires explicit endpoint configuration - no localhost fallback
  */
 export async function addSpeakerLabels(
   transcript: string,
-  aiEndpoint: string = 'http://localhost:1234/v1/chat/completions',
-  model: string = 'local-model'
+  aiEndpoint: string,
+  model: string = 'gemini-2.0-flash'
 ): Promise<string> {
+  if (!aiEndpoint) {
+    throw new Error('AI endpoint required for speaker labeling. Configure AI settings.');
+  }
   // Check if transcript already has speaker labels
   if (/^(Agent|Customer|Rep|Caller):/im.test(transcript)) {
     return transcript;

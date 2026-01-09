@@ -167,12 +167,15 @@ const SidebarContent: React.FC<{
     { href: '/time-correction-approvals', label: 'Time Corrections', icon: ClipboardList },
   ];
 
+  // Consolidated Call Quality navigation
+  // Removed redundant items:
+  // - /admin-reports (merged into /performance)
+  // - /compliance-alerts (merged into /conversation-intelligence as a tab)
+  // - /call-library (commented out - functionality covered by analytics + call-import)
   const callQualityItems: NavItem[] = [
-    { href: '/admin-reports', label: 'Performance Reports', icon: BarChart3 },
-    { href: '/performance', label: 'Performance Intelligence', icon: Sparkles },
+    { href: '/performance', label: 'Performance Hub', icon: Sparkles },
     { href: '/conversation-intelligence', label: 'Conversation AI', icon: Brain },
-    { href: '/compliance-alerts', label: 'Compliance Alerts', icon: ShieldAlert },
-    { href: '/call-library', label: 'Call Library', icon: Library },
+    // { href: '/call-library', label: 'Call Library', icon: Library }, // Disabled - use Analytics for browsing
     { href: '/call-import', label: 'Import Calls', icon: Upload },
     { href: '/coaching', label: 'Agent Coaching', icon: MessageSquare },
     { href: '/audit-templates', label: 'Audit Templates', icon: Settings },

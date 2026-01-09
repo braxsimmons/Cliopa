@@ -169,6 +169,9 @@ export const ShiftScheduler = () => {
   const [importLoading, setImportLoading] = useState(false);
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
+  const [selectedShiftIds, setSelectedShiftIds] = useState<Set<string>>(new Set());
+  const [isBulkActionDialogOpen, setIsBulkActionDialogOpen] = useState(false);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   // Fetch shifts and employees
   useEffect(() => {
@@ -527,6 +530,35 @@ export const ShiftScheduler = () => {
     return shift.email || 'Unknown';
   };
 
+  // CSV Export Function
+  const exportShiftsToCSV = () => {
+    const headers = ['employee_email', 'employee_name', 'scheduled_date', 'start_time', 'end_time', 'shift_type', 'team', 'status', 'notes'];
+    const rows = shifts.map(shift => [
+      shift.email || '',
+      `"${`${shift.first_name || ''} ${shift.last_name || ''}`.trim()}"`,
+      shift.scheduled_date,
+      shift.start_time,
+      shift.end_time,
+      shift.shift_type || 'regular',
+      shift.team || '',
+      shift.status,
+      `"${(shift.notes || '').replace(/"/g, '""')}"`, // Escape quotes in notes
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateStr = calendarMode === 'month'
+      ? format(currentMonth, 'yyyy-MM')
+      : format(startOfWeek(currentWeek, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+    link.download = `shifts-${dateStr}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Exported', description: `${shifts.length} shifts exported to CSV` });
+  };
+
   // CSV Import Functions
   const downloadCSVTemplate = () => {
     const headers = ['employee_email', 'scheduled_date', 'start_time', 'end_time', 'shift_type', 'team', 'notes'];
@@ -677,6 +709,87 @@ export const ShiftScheduler = () => {
     }));
   };
 
+  // Bulk selection functions
+  const toggleShiftSelection = (shiftId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedShiftIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(shiftId)) {
+        newSet.delete(shiftId);
+      } else {
+        newSet.add(shiftId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllShifts = () => {
+    const scheduledShifts = shifts.filter(s => s.status === 'scheduled');
+    setSelectedShiftIds(new Set(scheduledShifts.map(s => s.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedShiftIds(new Set());
+  };
+
+  const handleBulkStatusUpdate = async (status: 'completed' | 'cancelled' | 'no_show') => {
+    if (selectedShiftIds.size === 0) return;
+
+    setBulkActionLoading(true);
+    try {
+      const updatePromises = Array.from(selectedShiftIds).map(id =>
+        SchedulingService.updateShift(id, { status })
+      );
+      await Promise.all(updatePromises);
+
+      toast({
+        title: 'Success',
+        description: `${selectedShiftIds.size} shifts updated to ${status.replace('_', ' ')}`,
+      });
+
+      setIsBulkActionDialogOpen(false);
+      setSelectedShiftIds(new Set());
+      fetchData();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update some shifts',
+        variant: 'destructive',
+      });
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedShiftIds.size === 0) return;
+
+    setBulkActionLoading(true);
+    try {
+      const deletePromises = Array.from(selectedShiftIds).map(id =>
+        SchedulingService.deleteShift(id)
+      );
+      await Promise.all(deletePromises);
+
+      toast({
+        title: 'Success',
+        description: `${selectedShiftIds.size} shifts deleted`,
+      });
+
+      setIsBulkActionDialogOpen(false);
+      setSelectedShiftIds(new Set());
+      fetchData();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete some shifts',
+        variant: 'destructive',
+      });
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -704,6 +817,15 @@ export const ShiftScheduler = () => {
           >
             <Upload className="h-4 w-4 mr-2" />
             Import CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={exportShiftsToCSV}
+            disabled={shifts.length === 0}
+            className="border-[var(--color-border)] text-[var(--color-text)]"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
           </Button>
           {/* Month/Week Toggle */}
           <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden">
@@ -845,6 +967,71 @@ export const ShiftScheduler = () => {
         )}
       </div>
 
+      {/* Bulk Selection Bar */}
+      {(viewMode === 'shifts' || viewMode === 'both') && (
+        <div className="flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={selectedShiftIds.size > 0 && selectedShiftIds.size === shifts.filter(s => s.status === 'scheduled').length}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    selectAllShifts();
+                  } else {
+                    clearSelection();
+                  }
+                }}
+              />
+              <span className="text-sm text-[var(--color-text)]">
+                {selectedShiftIds.size > 0 ? `${selectedShiftIds.size} selected` : 'Select scheduled shifts'}
+              </span>
+            </div>
+            {selectedShiftIds.size > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSelection}
+                className="text-[var(--color-subtext)]"
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+          {selectedShiftIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => handleBulkStatusUpdate('completed')}
+                disabled={bulkActionLoading}
+                className="bg-green-500 hover:bg-green-600 text-white"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1" />
+                Complete All
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleBulkStatusUpdate('cancelled')}
+                disabled={bulkActionLoading}
+                className="border-[var(--color-border)] text-[var(--color-subtext)]"
+              >
+                Cancel All
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsBulkActionDialogOpen(true)}
+                disabled={bulkActionLoading}
+                className="border-red-500 text-red-500 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Undo Banner for Recurring Shifts */}
       {showUndoToast && lastBatchId && (
         <div className="bg-blue-500 text-white px-4 py-3 rounded-lg flex items-center justify-between">
@@ -947,11 +1134,20 @@ export const ShiftScheduler = () => {
                           key={shift.id}
                           onClick={(e) => handleShiftClick(shift, e)}
                           className={cn(
-                            'text-xs p-1 rounded truncate text-white',
-                            STATUS_COLORS[shift.status]
+                            'text-xs p-1 rounded truncate text-white flex items-center gap-1',
+                            STATUS_COLORS[shift.status],
+                            selectedShiftIds.has(shift.id) && 'ring-2 ring-offset-1 ring-[var(--color-accent)]'
                           )}
                         >
-                          {getEmployeeName(shift)}
+                          {shift.status === 'scheduled' && (
+                            <Checkbox
+                              checked={selectedShiftIds.has(shift.id)}
+                              onCheckedChange={() => {}}
+                              onClick={(e) => toggleShiftSelection(shift.id, e)}
+                              className="h-3 w-3 border-white data-[state=checked]:bg-white data-[state=checked]:text-blue-500"
+                            />
+                          )}
+                          <span className="truncate">{getEmployeeName(shift)}</span>
                         </div>
                       ))}
                       {totalItems > 3 && (
@@ -1042,11 +1238,20 @@ export const ShiftScheduler = () => {
                                   key={shift.id}
                                   onClick={(e) => handleShiftClick(shift, e)}
                                   className={cn(
-                                    'text-xs p-1 rounded text-white',
-                                    STATUS_COLORS[shift.status]
+                                    'text-xs p-1 rounded text-white flex items-center gap-1',
+                                    STATUS_COLORS[shift.status],
+                                    selectedShiftIds.has(shift.id) && 'ring-2 ring-offset-1 ring-[var(--color-accent)]'
                                   )}
                                 >
-                                  {shift.start_time.slice(0, 5)}-{shift.end_time.slice(0, 5)}
+                                  {shift.status === 'scheduled' && (
+                                    <Checkbox
+                                      checked={selectedShiftIds.has(shift.id)}
+                                      onCheckedChange={() => {}}
+                                      onClick={(e) => toggleShiftSelection(shift.id, e)}
+                                      className="h-3 w-3 border-white data-[state=checked]:bg-white data-[state=checked]:text-blue-500"
+                                    />
+                                  )}
+                                  <span>{shift.start_time.slice(0, 5)}-{shift.end_time.slice(0, 5)}</span>
                                 </div>
                               ))}
                             </div>
@@ -1530,6 +1735,34 @@ export const ShiftScheduler = () => {
               className="bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent)]/90"
             >
               {importLoading ? <LoadingSpinner size="sm" /> : `Import ${validShiftsCount} Shifts`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={isBulkActionDialogOpen} onOpenChange={setIsBulkActionDialogOpen}>
+        <DialogContent className="bg-[var(--color-surface)] border-[var(--color-border)]">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--color-text)]">Delete Selected Shifts</DialogTitle>
+            <DialogDescription className="text-[var(--color-subtext)]">
+              Are you sure you want to delete {selectedShiftIds.size} selected shift{selectedShiftIds.size !== 1 ? 's' : ''}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsBulkActionDialogOpen(false)}
+              className="border-[var(--color-border)] text-[var(--color-text)]"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={bulkActionLoading}
+            >
+              {bulkActionLoading ? <LoadingSpinner size="sm" /> : `Delete ${selectedShiftIds.size} Shifts`}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -47,7 +47,17 @@ import {
   Phone,
   Scale,
   BookOpen,
+  Copy,
+  Upload,
+  Download,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string; description: string }> = {
   opening: {
@@ -236,6 +246,87 @@ export function ScriptTemplateEditor() {
     });
   };
 
+  const handleDuplicate = (template: ScriptTemplate) => {
+    createMutation.mutate({
+      name: `${template.name} (Copy)`,
+      description: template.description,
+      category: template.category,
+      script_content: template.script_content,
+      required_phrases: template.required_phrases,
+      min_adherence_score: template.min_adherence_score,
+      is_active: false, // Start as inactive
+    });
+  };
+
+  // Export templates as JSON
+  const handleExportJSON = () => {
+    const exportData = templates.map(t => ({
+      name: t.name,
+      description: t.description,
+      category: t.category,
+      script_content: t.script_content,
+      required_phrases: t.required_phrases,
+      min_adherence_score: t.min_adherence_score,
+      is_active: t.is_active,
+    }));
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `script-templates-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Exported', description: `${templates.length} script templates exported` });
+  };
+
+  // Import from JSON file
+  const handleImportJSON = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        const imported = JSON.parse(content);
+        const templatesArray = Array.isArray(imported) ? imported : [imported];
+
+        let successCount = 0;
+        for (const template of templatesArray) {
+          try {
+            await ConversationIntelligenceService.createScriptTemplate({
+              name: template.name,
+              description: template.description,
+              category: template.category,
+              script_content: template.script_content,
+              required_phrases: template.required_phrases || [],
+              min_adherence_score: template.min_adherence_score || 70,
+              is_active: false, // Import as inactive by default
+            });
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to import template: ${template.name}`, err);
+          }
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['script-templates'] });
+        toast({
+          title: 'Import Complete',
+          description: `${successCount} of ${templatesArray.length} templates imported`
+        });
+      } catch (err) {
+        toast({
+          title: 'Import Failed',
+          description: 'Invalid JSON format',
+          variant: 'destructive'
+        });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // Reset input
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -255,6 +346,15 @@ export function ScriptTemplateEditor() {
 
   return (
     <div className="space-y-6">
+      {/* Hidden file input for import */}
+      <input
+        type="file"
+        accept=".json"
+        className="hidden"
+        id="script-import-input"
+        onChange={handleImportJSON}
+      />
+
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Script Templates</h2>
@@ -262,6 +362,28 @@ export function ScriptTemplateEditor() {
             Create and manage script templates for adherence checking
           </p>
         </div>
+        <div className="flex gap-2">
+          {/* Import/Export Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Import/Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => document.getElementById('script-import-input')?.click()}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import from JSON
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportJSON}>
+                <Download className="h-4 w-4 mr-2" />
+                Export as JSON
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
         <Dialog open={isCreateDialogOpen || !!editingTemplate} onOpenChange={(open) => {
           if (!open) {
             setIsCreateDialogOpen(false);
@@ -424,6 +546,7 @@ export function ScriptTemplateEditor() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Accordion type="multiple" className="space-y-4">
@@ -476,6 +599,14 @@ export function ScriptTemplateEditor() {
                             </Button>
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(template)}>
                               <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDuplicate(template)}
+                              title="Duplicate template"
+                            >
+                              <Copy className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"

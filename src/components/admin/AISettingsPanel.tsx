@@ -398,12 +398,10 @@ Agent: You're welcome! Thank you for calling and have a great day!
                       ...s,
                       provider: value,
                       host:
-                        value === 'ollama'
-                          ? 'http://localhost:11434'
-                          : value === 'lmstudio'
-                          ? 'http://localhost:1234'
-                          : value === 'gemini'
+                        value === 'gemini'
                           ? 'https://generativelanguage.googleapis.com'
+                          : value === 'ollama' || value === 'lmstudio'
+                          ? '' // Must be configured - no default localhost
                           : s.host,
                       model:
                         value === 'gemini'
@@ -477,11 +475,11 @@ Agent: You're welcome! Thank you for calling and have a great day!
                     onChange={(e) =>
                       setSettings((s) => ({ ...s, host: e.target.value }))
                     }
-                    placeholder="http://localhost:11434"
+                    placeholder={settings.provider === 'ollama' ? 'e.g., http://your-server:11434' : 'e.g., http://your-server:1234'}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {settings.provider === 'ollama' && 'Default Ollama port: 11434'}
-                    {settings.provider === 'lmstudio' && 'Default LM Studio port: 1234'}
+                    {settings.provider === 'ollama' && 'Enter your Ollama server URL (typical port: 11434)'}
+                    {settings.provider === 'lmstudio' && 'Enter your LM Studio server URL (typical port: 1234)'}
                   </p>
                 </div>
               )}
@@ -512,7 +510,7 @@ Agent: You're welcome! Thank you for calling and have a great day!
                       setSettings((s) => ({
                         ...s,
                         provider: 'ollama',
-                        host: 'http://localhost:11434',
+                        host: s.provider === 'ollama' ? s.host : '', // Preserve existing host or require config
                         model: 'llama3.1:8b',
                       }))
                     }
@@ -527,7 +525,7 @@ Agent: You're welcome! Thank you for calling and have a great day!
                       setSettings((s) => ({
                         ...s,
                         provider: 'lmstudio',
-                        host: 'http://localhost:1234',
+                        host: s.provider === 'lmstudio' ? s.host : '', // Preserve existing host or require config
                         model: 'local-model',
                       }))
                     }
